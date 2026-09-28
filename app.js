@@ -23,6 +23,7 @@ function demoApi(action,p){
     return demo.active[p.vehicle];
   }
   if(action==="endTrip"){delete demo.active[p.vehicle];return true}
+  if(action==="getMonthlyReport"){return {facility:demo.facility,records:[]}}
   if(action==="saveSettings"){Object.assign(demo,p.settings);return true}
 }
 
@@ -41,6 +42,8 @@ async function load(){
     fill("#driver",d.users||[],"운행자 선택");
     fill("#passenger",d.users||[],"동승자 선택");
     fill("#purpose",d.purposes||[],"운행목적 선택");
+    fill("#reportVehicle",d.vehicles||[],"차량 선택");
+    if(!$("#reportMonth").value)$("#reportMonth").value=new Date().toISOString().slice(0,7);
     renderAdmin();
     syncVehicle();
   }catch(e){alert(e.message)}
@@ -77,7 +80,7 @@ $("#startBtn").onclick=async()=>{
 };
 
 $("#endBtn").onclick=async()=>{
-  const vehicle=$("#vehicle").value,endKm:Number($("#endKm").value);
+  const vehicle=$("#vehicle").value,endKm=Number($("#endKm").value);
   if(!endKm)return alert("도착 키로수를 입력해 주세요.");
   try{await api("endTrip",{vehicle,endKm});await load()}catch(e){alert(e.message)}
 };
@@ -125,6 +128,27 @@ $("#copyUserLink").onclick=async()=>{
   }catch(e){
     prompt("아래 링크를 복사해 QR로 배포하세요.",u.toString());
   }
+};
+
+function xlsEscape(v){return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+
+function timeOnly(v){if(!v)return "";const d=new Date(v);return isNaN(d)?String(v):d.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false})}
+function dateOnly(v){if(!v)return "";const d=new Date(v);return isNaN(d)?String(v).slice(0,10):d.toLocaleDateString("ko-KR")}
+
+function downloadMonthlyXls(data,vehicle,month){
+  const rows=(data.records||[]).map(r=>`<tr><td>${xlsEscape(dateOnly(r["출발시각"]||r["운행일자"]))}</td><td>${xlsEscape(r["운행자"])}</td><td>${xlsEscape(r["동승자"])}</td><td>${xlsEscape(r["운행목적"])}</td><td>${xlsEscape(r["행선지"])}</td><td>${xlsEscape(timeOnly(r["출발시각"]))}</td><td>${xlsEscape(timeOnly(r["종료시각"]))}</td><td>${xlsEscape(r["운행거리"])}</td><td>${xlsEscape(r["비고"]||"")}</td></tr>`).join("");
+  const total=(data.records||[]).reduce((s,r)=>s+Number(r["운행거리"]||0),0);
+  const first=(data.records||[]).find(r=>r["출발키로수"]!==""&&r["출발키로수"]!=null);
+  const last=[...(data.records||[])].reverse().find(r=>r["종료키로수"]!==""&&r["종료키로수"]!=null);
+  const html=`<html><head><meta charset="utf-8"><style>body{font-family:Malgun Gothic,sans-serif}table{border-collapse:collapse;width:100%}th,td{border:1px solid #000;padding:6px;text-align:center}h1{text-align:center}.meta td{text-align:left}.blank{height:28px}</style></head><body><h1>차 량 운 행 일 지</h1><table class="meta"><tr><td><b>조회월</b> ${xlsEscape(month)}</td><td><b>차량번호</b> ${xlsEscape(vehicle)}</td><td><b>시설명</b> ${xlsEscape(data.facility||state.facility||"")}</td></tr><tr><td><b>전일지침</b> ${xlsEscape(first?first["출발키로수"]:"")} km</td><td><b>금일운행거리</b> ${xlsEscape(total)} km</td><td><b>금일지침</b> ${xlsEscape(last?last["종료키로수"]:"")} km</td></tr><tr><td><b>금일급유량</b> </td><td><b>급유액</b> </td><td><b>사용전표/누계전표</b> </td></tr></table><br><table><thead><tr><th>일자</th><th>운전자</th><th>승차자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>운행거리(km)</th><th>비고</th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="blank">해당 월 운행기록 없음</td></tr>`}</tbody></table></body></html>`;
+  const blob=new Blob(["\ufeff",html],{type:"application/vnd.ms-excel;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`차량운행일지_${vehicle}_${month}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+$("#downloadReportBtn").onclick=async()=>{
+  const vehicle=$("#reportVehicle").value,month=$("#reportMonth").value;
+  if(!vehicle||!month)return alert("차량번호와 조회 월을 선택해 주세요.");
+  try{const data=await api("getMonthlyReport",{vehicle,month});downloadMonthlyXls(data,vehicle,month)}catch(e){alert(e.message)}
 };
 
 $("#saveAdminBtn").onclick=async()=>{

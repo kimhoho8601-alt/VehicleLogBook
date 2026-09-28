@@ -3,7 +3,7 @@ const SHEETS={config:"설정",vehicles:"차량",users:"사용자",options:"선�
 function doPost(e){
   try{
     const q=JSON.parse(e.postData.contents||"{}");
-    const fn={bootstrap,startTrip,endTrip,saveSettings}[q.action];
+    const fn={bootstrap,startTrip,endTrip,saveSettings,getMonthlyReport}[q.action];
     if(!fn)throw Error("알 수 없는 action");
     return json(true,fn(q));
   }catch(err){
@@ -125,6 +125,14 @@ function rewriteList(sheetName,header,items){
   const s=sh(sheetName);
   if(s.getLastRow()>1)s.getRange(2,1,s.getLastRow()-1,s.getLastColumn()).clearContent();
   items.forEach((x,i)=>appendByHeader(sheetName,{[header]:x,"사용여부":"Y","정렬순서":i+1}));
+}
+
+function getMonthlyReport(q){
+  const c=cfg();
+  const records=table(SHEETS.logs)
+    .filter(r=>String(r["차량번호"])===String(q.vehicle)&&String(r["운행월"])===String(q.month)&&String(r["상태"])==="운행종료")
+    .sort((a,b)=>new Date(a["출발시각"]||a["운행일자"])-new Date(b["출발시각"]||b["운행일자"]));
+  return {facility:c["시설명"]||"",records:records};
 }
 
 function saveSettings(q){
