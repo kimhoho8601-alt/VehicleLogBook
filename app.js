@@ -127,7 +127,8 @@ async function renderAdmin(){
   }
 }
 function renderLogin(){
-  app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정으로 로그인하면 해당 시설의 차량, 직원, 운행목적과 월간 운행일지를 관리할 수 있습니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`;
+  const sharedLogin=(qs.get("login")||"").trim().toUpperCase();
+  app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정으로 로그인하면 해당 시설의 차량, 직원, 운행목적과 월간 운행일지를 관리할 수 있습니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01" value="${esc(sharedLogin)}"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`;
 }
 window.adminLogin=async function(){
   const id=document.getElementById("loginId").value.trim().toLowerCase();
@@ -217,36 +218,93 @@ window.removeItem=async function(table,id){
 }
 
 function renderAccountRegistration(){
-  adminFrame(`<section class="card"><h2>관리자 계정 등록</h2><p>시설명과 로그인 정보를 입력하면 해당 시설 전용 관리자 계정과 직원용 접속 주소를 생성합니다.</p><div class="report-grid" style="margin-top:16px"><label class="field" style="margin:0"><span>시설명</span><input id="accountFacilityName" class="input" placeholder="예: 서울○○아동보호전문기관"></label><label class="field" style="margin:0"><span>시설 코드</span><input id="accountFacilityCode" class="input" placeholder="예: SEOUL01"></label><label class="field" style="margin:0"><span>관리자 ID</span><input id="accountLoginId" class="input" placeholder="예: SEOUL01"></label></div><label class="field"><span>초기 비밀번호</span><input id="accountPassword" class="input" type="password" minlength="8" placeholder="8자 이상"></label><button class="btn primary" onclick="prepareFacilityAccount()">관리자 계정 등록</button><div id="accountGuide" class="empty" style="display:none;margin-top:14px"></div></section>`);
+  adminFrame(`<section class="card"><h2>관리자 계정 등록</h2><p>시설명과 로그인 정보를 입력하면 해당 시설 전용 관리자 계정과 직원용 접속 주소를 생성합니다.</p><div class="report-grid" style="margin-top:16px"><label class="field" style="margin:0"><span>시설명</span><input id="accountFacilityName" class="input" placeholder="예: 서울○○아동보호전문기관"></label><label class="field" style="margin:0"><span>시설 코드</span><input id="accountFacilityCode" class="input" placeholder="예: SEOUL01"></label><label class="field" style="margin:0"><span>관리자 ID</span><input id="accountLoginId" class="input" placeholder="예: SEOUL01"></label></div><label class="field"><span>초기 비밀번호</span><input id="accountPassword" class="input" type="password" placeholder="초기 비밀번호 입력"></label><button class="btn primary" onclick="prepareFacilityAccount()">관리자 계정 등록</button><div id="accountGuide" class="empty" style="display:none;margin-top:14px"></div></section><section class="card"><div class="admin-list-head"><div><h2>관리자 계정 목록</h2><p>계정을 클릭하면 공유 가능한 관리자 로그인 링크와 직원용 시설 링크를 확인할 수 있습니다.</p></div><button class="text-btn" onclick="loadAdminAccounts()">새로고침</button></div><div id="adminAccountList"><div class="empty">관리자 목록을 불러오는 중입니다.</div></div></section>`);
+  loadAdminAccounts();
 }
+
+async function callAdminApi(payload){
+  const session=await validSession();
+  const response=await fetch(SUPABASE_URL+"/functions/v1/vehicle-log-admin",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+session.access_token,
+      "apikey":SUPABASE_KEY
+    },
+    body:JSON.stringify(payload)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(result.error||"관리자 정보를 처리하지 못했습니다.");
+  return result;
+}
+
+window.loadAdminAccounts=async function(){
+  const wrap=document.getElementById("adminAccountList");
+  if(!wrap)return;
+  wrap.innerHTML='<div class="empty">관리자 목록을 불러오는 중입니다.</div>';
+  try{
+    const result=await callAdminApi({action:"list"});
+    const admins=result.admins||[];
+    if(!admins.length){
+      wrap.innerHTML='<div class="empty">등록된 시설 관리자 계정이 없습니다.</div>';
+      return;
+    }
+    wrap.innerHTML=admins.map((item,i)=>{
+      const code=item.facility?.code||"";
+      const name=item.facility?.name||"시설";
+      const loginId=item.loginId||"";
+      const adminUrl=location.origin+location.pathname+"?admin=1&login="+encodeURIComponent(loginId);
+      const staffUrl=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
+      return `<div class="admin-account-row"><button type="button" class="admin-account-summary" onclick="toggleAdminShare('adminShare${i}')"><span><strong>${esc(name)}</strong><small>${esc(code)} · 관리자 ID ${esc(loginId)}</small></span><span class="share-open">공유 링크 ›</span></button><div id="adminShare${i}" class="admin-share-panel" hidden><label>관리자 로그인 링크</label><div class="share-line"><input class="input" readonly value="${esc(adminUrl)}"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(adminUrl)}')">복사</button></div><label>직원용 시설 링크</label><div class="share-line"><input class="input" readonly value="${esc(staffUrl)}"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(staffUrl)}')">복사</button></div></div></div>`;
+    }).join("");
+  }catch(error){
+    wrap.innerHTML='<div class="empty">'+esc(error.message||"관리자 목록을 불러오지 못했습니다.")+'</div>';
+  }
+}
+
+window.toggleAdminShare=function(id){
+  const panel=document.getElementById(id);
+  if(panel)panel.hidden=!panel.hidden;
+}
+
+window.copyShareLink=async function(encoded){
+  const url=decodeURIComponent(encoded);
+  try{
+    await navigator.clipboard.writeText(url);
+    toast("공유 링크를 복사했습니다.");
+  }catch(_){
+    prompt("아래 링크를 복사해주세요.",url);
+  }
+}
+
 window.prepareFacilityAccount=async function(){
   const name=document.getElementById("accountFacilityName").value.trim();
   const code=document.getElementById("accountFacilityCode").value.trim().toUpperCase();
   const login=document.getElementById("accountLoginId").value.trim().toUpperCase();
   const pw=document.getElementById("accountPassword").value;
-  if(!name||!code||!login||pw.length<8)return toast("시설명, 시설 코드, 관리자 ID, 8자 이상 비밀번호를 입력해주세요.");
+  if(!name||!code||!login||!pw)return toast("시설명, 시설 코드, 관리자 ID, 초기 비밀번호를 입력해주세요.");
 
   const button=document.querySelector('[onclick="prepareFacilityAccount()"]');
   if(button){button.disabled=true;button.textContent="계정 생성 중...";}
   try{
-    const session=await validSession();
-    const response=await fetch(SUPABASE_URL+"/functions/v1/vehicle-log-admin",{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "Authorization":"Bearer "+session.access_token,
-        "apikey":SUPABASE_KEY
-      },
-      body:JSON.stringify({action:"create",facilityName:name,facilityCode:code,loginId:login,password:pw})
+    await callAdminApi({
+      action:"create",
+      facilityName:name,
+      facilityCode:code,
+      loginId:login,
+      password:pw
     });
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok)throw new Error(result.error||"계정 생성에 실패했습니다.");
 
-    const qrUrl=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
+    const staffUrl=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
+    const adminUrl=location.origin+location.pathname+"?admin=1&login="+encodeURIComponent(login);
     const box=document.getElementById("accountGuide");
     box.style.display="block";
-    box.innerHTML="<strong>"+esc(name)+"</strong><br>시설 코드: "+esc(code)+"<br>관리자 ID: "+esc(login)+"<br><br>직원용 주소:<br><span style='word-break:break-all'>"+esc(qrUrl)+"</span>";
+    box.innerHTML="<strong>"+esc(name)+"</strong><br>관리자 ID: "+esc(login)+"<br><br>관리자 공유 링크:<br><span style='word-break:break-all'>"+esc(adminUrl)+"</span><br><br>직원용 주소:<br><span style='word-break:break-all'>"+esc(staffUrl)+"</span>";
+    document.getElementById("accountFacilityName").value="";
+    document.getElementById("accountFacilityCode").value="";
+    document.getElementById("accountLoginId").value="";
     document.getElementById("accountPassword").value="";
+    await loadAdminAccounts();
     toast("시설 관리자 계정을 생성했습니다.");
   }catch(error){toast(error.message||"계정 생성에 실패했습니다.");}
   finally{if(button){button.disabled=false;button.textContent="관리자 계정 등록";}}
