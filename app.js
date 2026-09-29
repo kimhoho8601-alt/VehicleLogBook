@@ -319,7 +319,7 @@ window.downloadReport=async function(){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast("결재용 월간 차량운행일지를 다운로드했습니다.");
-}
+};
 (async()=>{
   try{
     if(qs.get("admin")==="1") await renderAdmin();
