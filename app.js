@@ -27,7 +27,19 @@ window.startTrip=async function(){const driverId=document.getElementById("driver
 function renderEnd(v,a){userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button><div class="card"><p class="eyebrow">운행 중</p><h2>${esc(v.plate_number)}</h2><p><strong>${esc(a.driver_name)}</strong> 님이 ${fmtTime(a.start_at)}부터 운행 중입니다.</p><div class="field"><span>행선지</span><div class="input" style="background:#faf7f8">${esc(a.destination||"-")}</div></div><label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="0.1" inputmode="decimal" placeholder="출발 ${a.start_odometer} km 이상"></label><button class="btn dark" onclick="endTrip('${a.id}')">운행 종료</button></div>`,state.data.facility.name)}
 window.endTrip=async function(id){const endOdometer=Number(document.getElementById("endKm").value);if(!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");try{await api({action:"endTrip",tripId:id,endOdometer});toast("운행을 종료했습니다.");await loadPublic()}catch(e){toast(e.message)}}
 
-async function renderAdmin(){const {data:{session}}=await db.auth.getSession();if(!session)return renderLogin();await loadAdminContext();renderAdminHome()}
+async function renderAdmin(){
+  try{
+    const {data:{session},error:sessionError}=await db.auth.getSession();
+    if(sessionError||!session)return renderLogin();
+    await loadAdminContext();
+    return renderAdminHome();
+  }catch(error){
+    console.error("admin render failed",error);
+    try{await db.auth.signOut();}catch(_){}
+    renderLogin();
+    setTimeout(()=>toast("관리자 세션을 초기화했습니다. 다시 로그인해주세요."),50);
+  }
+}
 function renderLogin(){app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정으로 로그인하면 해당 시설의 차량, 직원, 운행목적과 월간 운행일지를 관리할 수 있습니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`}
 window.adminLogin=async function(){const id=document.getElementById("loginId").value.trim().toLowerCase(),password=document.getElementById("loginPw").value;if(!id||!password)return toast("시설 ID와 비밀번호를 입력해주세요.");const email=id==="master"?"fomhr@sc.or.kr":(id.includes("@")?id:id+"@vehiclelog.local");const {error}=await db.auth.signInWithPassword({email,password});if(error)return toast("로그인 정보를 확인해주세요.");renderAdmin()}
 async function loadAdminContext(){const {data:{user}}=await db.auth.getUser();const {data:profile,error}=await db.from("profiles").select("id,facility_id,display_name,role").eq("id",user.id).single();if(error)throw error;const [{data:facility},{data:vehicles},{data:members},{data:purposes}]=await Promise.all([db.from("facilities").select("*").eq("id",profile.facility_id).single(),db.from("vehicles").select("*").eq("facility_id",profile.facility_id).order("sort_order"),db.from("facility_members").select("*").eq("facility_id",profile.facility_id).order("sort_order"),db.from("trip_purposes").select("*").eq("facility_id",profile.facility_id).order("sort_order")]);state.admin={profile,facility,vehicles:vehicles||[],members:members||[],purposes:purposes||[]}}
@@ -172,4 +184,12 @@ window.downloadReport=async function(){
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
   toast("결재용 월간 차량운행일지를 다운로드했습니다.");
 }
-(async()=>{if(qs.get("admin")==="1")renderAdmin();else loadPublic()})();
+(async()=>{
+  try{
+    if(qs.get("admin")==="1") await renderAdmin();
+    else await loadPublic();
+  }catch(error){
+    console.error("app start failed",error);
+    app.innerHTML='<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>화면을 불러오지 못했습니다</h1><p>새로고침 후 다시 시도해주세요.</p><button class="btn light" onclick="location.reload()">새로고침</button></section></main>';
+  }
+})();
