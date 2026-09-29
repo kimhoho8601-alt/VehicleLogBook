@@ -4,7 +4,7 @@ const PUBLIC_API=SUPABASE_URL+"/functions/v1/vehicle-log-public";
 
 const app=document.getElementById("app");
 const qs=new URLSearchParams(location.search);
-const state={facilityCode:(qs.get("facility")||"").trim().toUpperCase(),data:null,selectedVehicle:null,passengers:new Set(),admin:null,adminTab:"dashboard"};
+const state={facilityCode:(qs.get("facility")||"").trim().toUpperCase(),data:null,selectedVehicle:null,passengers:new Set(),admin:null,adminTab:"dashboard",overview:null};
 
 const esc=(v="")=>String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),1800)}
@@ -176,10 +176,16 @@ window.previewFacility=function(encodedCode){
   const url=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
   window.open(url,"_blank","noopener");
 }
+async function getOverview(force=false){
+  if(state.admin?.profile?.role!=="superadmin")return null;
+  if(!force&&state.overview)return state.overview;
+  state.overview=await callAdminApi({action:"overview"});
+  return state.overview;
+}
 async function renderAdminHome(){
   if(state.adminTab==="dashboard")return renderDashboard();
-  if(state.adminTab==="vehicles")return renderManager("vehicles","차량 관리","plate_number","차량번호");
-  if(state.adminTab==="members")return renderManager("facility_members","직원 관리","name","직원명");
+  if(state.adminTab==="vehicles")return state.admin.profile.role==="superadmin"?renderGlobalManager("vehicles"):renderManager("vehicles","차량 관리","plate_number","차량번호");
+  if(state.adminTab==="members")return state.admin.profile.role==="superadmin"?renderGlobalManager("members"):renderManager("facility_members","직원 관리","name","직원명");
   if(state.adminTab==="purposes")return renderManager("trip_purposes","운행목적 관리","name","운행목적");
   if(state.adminTab==="report")return renderReport();
   if(state.adminTab==="accounts"&&state.admin.profile.role==="superadmin")return renderAccountRegistration();
@@ -187,10 +193,41 @@ async function renderAdminHome(){
   return renderDashboard();
 }
 async function renderDashboard(){
+  if(state.admin.profile.role==="superadmin"){
+    adminFrame('<div class="empty">전체 시설 현황을 불러오는 중입니다.</div>');
+    try{
+      const o=await getOverview(true);
+      const facilities=o.stats||[];
+      const totalVehicles=facilities.reduce((n,x)=>n+Number(x.vehicleCount||0),0);
+      const totalMembers=facilities.reduce((n,x)=>n+Number(x.memberCount||0),0);
+      const activeVehicles=facilities.reduce((n,x)=>n+Number(x.activeVehicleCount||0),0);
+      const activeDrivers=facilities.reduce((n,x)=>n+Number(x.activeDriverCount||0),0);
+      const rows=facilities.map(x=>`<tr><td><strong>${esc(x.facility.name)}</strong><small>${esc(x.facility.code)}</small></td><td>${x.vehicleCount}</td><td>${x.memberCount}</td><td>${x.activeVehicleCount}</td><td>${x.activeDriverCount}</td><td><button class="icon-btn" onclick="previewFacility('${encodeURIComponent(x.facility.code)}')">미리보기</button></td></tr>`).join("");
+      adminFrame(`<section class="stats super-stats"><div class="stat"><span>등록 시설</span><strong>${facilities.length}</strong></div><div class="stat"><span>운영 차량</span><strong>${totalVehicles}</strong></div><div class="stat"><span>등록 직원</span><strong>${totalMembers}</strong></div><div class="stat"><span>운행 중 차량</span><strong>${activeVehicles}</strong></div><div class="stat"><span>운행 중 직원</span><strong>${activeDrivers}</strong></div></section><section class="card"><h2>시설별 운영 현황</h2><p>관리자 계정에 연결된 시설만 집계합니다. 시스템 관리자(HQ)와 별도 테스트 데이터는 집계에서 제외됩니다.</p><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설</th><th>차량</th><th>직원</th><th>운행 중 차량</th><th>운행 중 직원</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6">등록된 시설이 없습니다.</td></tr>'}</tbody></table></div></section>`);
+    }catch(error){adminFrame('<div class="empty">'+esc(error.message||"전체 현황을 불러오지 못했습니다.")+'</div>')}
+    return;
+  }
+
   const active=await restRequest("trips?select=id,vehicle_id,driver_id,start_at,destination&facility_id="+eq(state.admin.facility.id)+"&status=eq.active&order=start_at.asc");
   const vm=Object.fromEntries(state.admin.vehicles.map(x=>[x.id,x.plate_number]));
   const mm=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
   adminFrame(`<section class="stats"><div class="stat"><span>등록 차량</span><strong>${state.admin.vehicles.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>등록 직원</span><strong>${state.admin.members.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>현재 운행 중</span><strong>${(active||[]).length}</strong></div></section><section class="card"><h2>현재 운행</h2><p>직원 화면의 운행 상태와 실시간으로 동일하게 반영됩니다.</p><div>${(active||[]).map(x=>`<div class="trip-row"><strong>${esc(vm[x.vehicle_id]||"차량")} · ${esc(mm[x.driver_id]||"운행자")}</strong><small>${fmtTime(x.start_at)} 출발 · ${esc(x.destination||"")}</small></div>`).join("")||'<div class="empty" style="margin-top:14px">현재 운행 중인 차량이 없습니다.</div>'}</div></section>`);
+}
+async function renderGlobalManager(type){
+  const title=type==="vehicles"?"전체 시설 차량":"전체 시설 직원";
+  adminFrame('<div class="empty">'+title+' 정보를 불러오는 중입니다.</div>');
+  try{
+    const o=await getOverview(true);
+    const facilityMap=Object.fromEntries((o.facilities||[]).map(f=>[f.id,f]));
+    const rows=(type==="vehicles"?o.vehicles:o.members)||[];
+    const body=rows.map(r=>{
+      const f=facilityMap[r.facility_id]||{};
+      const main=type==="vehicles"?r.plate_number:r.name;
+      const sub=type==="vehicles"?(r.label||""):"";
+      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(main||"")}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td></tr>`;
+    }).join("");
+    adminFrame(`<section class="card"><h2>${title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설을 통합 조회합니다. 각 시설 관리자는 자기 시설 데이터만 조회·수정합니다.</p><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${type==="vehicles"?"차량":"직원"}</th><th>상태</th></tr></thead><tbody>${body||'<tr><td colspan="3">등록된 데이터가 없습니다.</td></tr>'}</tbody></table></div></section>`);
+  }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
 }
 function managerData(table){
   if(table==="vehicles")return state.admin.vehicles;
@@ -199,11 +236,12 @@ function managerData(table){
 }
 function renderManager(table,title,key,label){
   const rows=managerData(table);
-  adminFrame(`<section class="card"><h2>${title}</h2><p>저장하면 직원용 화면에 바로 반영됩니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><button class="icon-btn" onclick="removeItem('${table}','${r.id}')">삭제</button></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
+  adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 저장하면 해당 시설의 직원용 화면에 바로 반영됩니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><button class="icon-btn" onclick="removeItem('${table}','${r.id}')">삭제</button></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
 }
 window.addItem=async function(table,key){
   const value=document.getElementById("newItem").value.trim();
   if(!value)return;
+  if(state.admin.profile.role==="superadmin")return toast("시설별 관리자 계정에서 추가해주세요.");
   const payload={facility_id:state.admin.facility.id,[key]:value,sort_order:managerData(table).length+1};
   try{
     await restRequest(table,{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(payload)});
@@ -213,6 +251,7 @@ window.addItem=async function(table,key){
   }catch(error){toast(error.message)}
 }
 window.removeItem=async function(table,id){
+  if(state.admin.profile.role==="superadmin")return toast("시설별 관리자 계정에서 삭제해주세요.");
   if(!confirm("삭제할까요?"))return;
   try{
     await restRequest(table+"?id="+eq(id),{method:"DELETE"});
@@ -317,7 +356,20 @@ window.prepareFacilityAccount=async function(){
 
 async function renderReport(){
   const now=new Date().toISOString().slice(0,7);
-  adminFrame(`<section class="card"><h2>월간 차량운행일지</h2><p>첨부된 차량운행일지 양식을 기준으로, 선택한 한 달을 하나의 Excel 파일로 내려받습니다. 날짜별 시트는 수정 가능한 상태로 생성됩니다.</p><div class="report-grid" style="margin-top:16px"><label class="field" style="margin:0"><span>조회 월</span><input id="reportMonth" class="input" type="month" value="${now}"></label><label class="field" style="margin:0"><span>차량</span><select id="reportVehicle" class="select"><option value="">차량 선택</option>${state.admin.vehicles.map(v=>`<option value="${v.id}">${esc(v.plate_number)}</option>`).join("")}</select></label><button class="btn dark" onclick="downloadReport()">Excel 다운로드</button></div><p class="report-note">한 파일 안에 1일~말일까지 날짜별 시트가 생성되며, 결재·유류수불현황·운행현황·운행내용 구조를 원 양식에 맞춰 구성합니다.</p></section>`);
+  let vehicles=state.admin.vehicles, facilityMap={};
+  if(state.admin.profile.role==="superadmin"){
+    adminFrame('<div class="empty">시설별 차량 정보를 불러오는 중입니다.</div>');
+    try{
+      const o=await getOverview(true);
+      vehicles=o.vehicles||[];
+      facilityMap=Object.fromEntries((o.facilities||[]).map(f=>[f.id,f]));
+    }catch(error){adminFrame('<div class="empty">'+esc(error.message||"차량 정보를 불러오지 못했습니다.")+'</div>');return}
+  }
+  const options=vehicles.map(v=>{
+    const prefix=state.admin.profile.role==="superadmin"?(facilityMap[v.facility_id]?.name||"시설")+" · ":"";
+    return `<option value="${v.id}">${esc(prefix+v.plate_number)}</option>`;
+  }).join("");
+  adminFrame(`<section class="card"><h2>월간 차량운행일지</h2><p>차량과 대상월을 선택하면 화면 예시와 같은 월간 단일 시트 Excel로 내려받습니다. 셀은 모두 수정 가능합니다.</p><div class="report-grid" style="margin-top:16px"><label class="field" style="margin:0"><span>대상월</span><input id="reportMonth" class="input" type="month" value="${now}"></label><label class="field" style="margin:0"><span>차량</span><select id="reportVehicle" class="select"><option value="">차량 선택</option>${options}</select></label><button class="btn dark" onclick="downloadReport()">Excel 다운로드</button></div><p class="report-note">열 구성: 날짜 · 운전자 · 동행자 · 용무 · 행선지 · 출발시간 · 도착시간 · 출발km · 도착km · 운행거리</p></section>`);
 }
 
 const xlsxXml=v=>String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -347,93 +399,77 @@ function zipStore(files){
   const end=concatBytes([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBytes.length),u32(offset),u16(0)]);
   return concatBytes([...locals,centralBytes,end]);
 }
-function buildDailySheet(day,rows,vehicle,members,purposes){
-  const yyyy=day.getFullYear(),mm=String(day.getMonth()+1).padStart(2,"0"),dd=String(day.getDate()).padStart(2,"0");
-  const weekday=new Intl.DateTimeFormat("ko-KR",{timeZone:"Asia/Seoul",weekday:"long"}).format(day);
-  const first=rows[0],last=rows[rows.length-1];
-  const total=rows.reduce((sum,r)=>sum+Number(r.distance||0),0);
-  const bodyCount=Math.max(15,rows.length);
-  const sheetRows=[],merges=[
-    "A1:H2","I1:I2","J1:K1","J2:K2","A3:L3",
-    "A5:B5","C5:F5","G5:G8","H5:I5","J5:K5",
-    "A6:B8","C6:D6","E6:F6","H6:I6","J6:K6",
-    "C7:D7","E7:F7","H7:I7","J7:K7",
-    "C8:D8","E8:F8","H8:I8","J8:K8",
-    "A9:B9","C9:D9","E9:F10","G9:H10","I9:J9","K9:K10","L9:L10",
-    "A10:B10","C10:D10"
-  ];
-  const addRow=(n,cells,h)=>sheetRows.push(`<row r="${n}"${h?` ht="${h}" customHeight="1"`:""}>${cells.join("")}</row>`);
-  addRow(1,[xlsxText("A1","차 량 운 행 일 지",1),xlsxText("I1","결재",8),xlsxText("J1","담 당",8),xlsxText("L1","팀장",8)],28);
-  addRow(2,[xlsxText("J2","",3),xlsxText("L2","",3)],28);
-  addRow(3,[xlsxText("A3",`${yyyy}년 ${Number(mm)}월 ${Number(dd)}일  ( ${weekday} )`,5)],24);
-  addRow(4,[],8);
-  addRow(5,[xlsxText("A5","차 량 번 호",6),xlsxText("C5",vehicle?.plate_number||"",7),xlsxText("G5","유\n류\n수\n불\n현\n황",9),xlsxText("H5","금일급유량",6),xlsxText("J5","",7),xlsxText("L5","리터.",3)],24);
-  addRow(6,[xlsxText("A6","운\n행\n현\n황",9),xlsxText("C6","전 일 지 침",6),xlsxNum("E6",first?.start_odometer??"",7),xlsxText("H6","급유액",6),xlsxText("J6","",7),xlsxText("L6","원.",3)],24);
-  addRow(7,[xlsxText("C7","금일운행거리",6),xlsxNum("E7",rows.length?total:"",7),xlsxText("H7","사용전표",6),xlsxText("J7","",7),xlsxText("L7","No.",3)],24);
-  addRow(8,[xlsxText("C8","금 일 지 침",6),xlsxNum("E8",last?.end_odometer??"",7),xlsxText("H8","누계전표",6),xlsxText("J8","",7),xlsxText("L8","총          개.",3)],24);
-  addRow(9,[xlsxText("A9","구 분",2),xlsxText("C9","승 차 자",2),xlsxText("E9","용 무",2),xlsxText("G9","행선지",2),xlsxText("I9","운행시간",2),xlsxText("K9","운행\n거리 (km)",2),xlsxText("L9","비고",2)],25);
-  addRow(10,[xlsxText("A10","운전자",2),xlsxText("C10","승차자",2),xlsxText("I10","출발",2),xlsxText("J10","도착",2)],23);
+function buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName=""){
+  const sheetRows=[];
+  const add=(n,cells,h)=>sheetRows.push(`<row r="${n}"${h?` ht="${h}" customHeight="1"`:""}>${cells.join("")}</row>`);
+  add(1,[xlsxText("H1","결재",7),xlsxText("I1","담당",2),xlsxText("J1","팀장",2)],28);
+  add(2,[xlsxText("I2","",3),xlsxText("J2","",3)],34);
+  add(3,[],8);
+  add(4,[xlsxText("A4","차량운행일지",1)],30);
+  add(5,[],8);
+  add(6,[xlsxText("A6","차량",2),xlsxText("B6",vehicle?.plate_number||"",6),xlsxText("D6","시설",2),xlsxText("E6",facilityName,6)],23);
+  add(7,[xlsxText("A7","대상월",2),xlsxText("B7",month,6)],23);
+  add(8,["날짜","운전자","동행자","용무","행선지","출발시간","도착시간","출발km","도착km","운행거리"].map((x,i)=>xlsxText(String.fromCharCode(65+i)+"8",x,2)),25);
+  const bodyCount=Math.max(30,rows.length);
   for(let i=0;i<bodyCount;i++){
-    const n=11+i,r=rows[i];
-    merges.push(`A${n}:B${n}`,`C${n}:D${n}`,`E${n}:F${n}`,`G${n}:H${n}`);
-    addRow(n,[
-      xlsxText(`A${n}`,r?members[r.driver_id]||"":"",4),
-      xlsxText(`C${n}`,r?(r.passenger_ids||[]).map(id=>members[id]).filter(Boolean).join(", "):"",4),
-      xlsxText(`E${n}`,r?purposes[r.purpose_id]||"":"",4),
-      xlsxText(`G${n}`,r?r.destination||"":"",4),
-      xlsxText(`I${n}`,r?seoulTime(r.start_at):"",3),
-      xlsxText(`J${n}`,r?seoulTime(r.end_at):"",3),
-      r?xlsxNum(`K${n}`,Number(r.distance||0),3):xlsxText(`K${n}`,"",3),
-      xlsxText(`L${n}`,r?r.note||"":"",4)
-    ],24);
+    const n=9+i,r=rows[i];
+    add(n,[
+      xlsxText(`A${n}`,r?seoulDateKey(r.start_at):"",3),
+      xlsxText(`B${n}`,r?members[r.driver_id]||"":"",3),
+      xlsxText(`C${n}`,r?(r.passenger_ids||[]).map(id=>members[id]).filter(Boolean).join(", "):"",3),
+      xlsxText(`D${n}`,r?purposes[r.purpose_id]||"":"",4),
+      xlsxText(`E${n}`,r?r.destination||"":"",4),
+      xlsxText(`F${n}`,r?seoulTime(r.start_at):"",3),
+      xlsxText(`G${n}`,r?seoulTime(r.end_at):"",3),
+      r?xlsxNum(`H${n}`,r.start_odometer,3):xlsxText(`H${n}`,"",3),
+      r?xlsxNum(`I${n}`,r.end_odometer,3):xlsxText(`I${n}`,"",3),
+      r?xlsxNum(`J${n}`,r.distance,3):xlsxText(`J${n}`,"",3)
+    ],22);
   }
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols><col min="1" max="2" width="10" customWidth="1"/><col min="3" max="4" width="11" customWidth="1"/><col min="5" max="6" width="13" customWidth="1"/><col min="7" max="8" width="14" customWidth="1"/><col min="9" max="10" width="9" customWidth="1"/><col min="11" max="11" width="12" customWidth="1"/><col min="12" max="12" width="14" customWidth="1"/></cols><sheetData>${sheetRows.join("")}</sheetData><mergeCells count="${merges.length}">${merges.map(x=>`<mergeCell ref="${x}"/>`).join("")}</mergeCells><pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="1"/></worksheet>`;
-}
-function buildMonthlyXlsx(month,rows,vehicle,members,purposes){
-  const [y,m]=month.split("-").map(Number);
-  const days=new Date(y,m,0).getDate();
-  const files=[],rels=[],sheets=[];
-  for(let d=1;d<=days;d++){
-    const date=new Date(`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}T12:00:00+09:00`);
-    const key=`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const dayRows=rows.filter(r=>seoulDateKey(r.start_at)===key);
-    files.push({name:`xl/worksheets/sheet${d}.xml`,data:buildDailySheet(date,dayRows,vehicle,members,purposes)});
-    rels.push(`<Relationship Id="rId${d}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${d}.xml"/>`);
-    sheets.push(`<sheet name="${String(d).padStart(2,"0")}일" sheetId="${d}" r:id="rId${d}"/>`);
-  }
-  const styleId=days+1;
-  rels.push(`<Relationship Id="rId${styleId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`);
-  files.push({name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${Array.from({length:days},(_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}</Types>`});
-  files.push({name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`});
-  files.push({name:"xl/workbook.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${sheets.join("")}</sheets><calcPr calcId="191029"/></workbook>`});
-  files.push({name:"xl/_rels/workbook.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`});
-  files.push({name:"xl/styles.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="18"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><name val="Malgun Gothic"/></font><font><sz val="10"/><name val="Malgun Gothic"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="10"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`});
-  return zipStore(files);
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="3" width="14" customWidth="1"/><col min="4" max="4" width="24" customWidth="1"/><col min="5" max="5" width="20" customWidth="1"/><col min="6" max="7" width="12" customWidth="1"/><col min="8" max="10" width="13" customWidth="1"/></cols><sheetData>${sheetRows.join("")}</sheetData><mergeCells count="4"><mergeCell ref="A4:J4"/><mergeCell ref="H1:H2"/><mergeCell ref="B6:C6"/><mergeCell ref="E6:G6"/></mergeCells><autoFilter ref="A8:J${8+bodyCount}"/><pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="18"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><name val="Malgun Gothic"/></font><font><sz val="10"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf fontId="2" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  return zipStore([
+    {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`},
+    {name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:"xl/workbook.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="차량운행일지" sheetId="1" r:id="rId1"/></sheets><calcPr calcId="191029"/></workbook>`},
+    {name:"xl/_rels/workbook.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:"xl/styles.xml",data:styles},
+    {name:"xl/worksheets/sheet1.xml",data:sheet}
+  ]);
 }
 window.downloadReport=async function(){
   const month=document.getElementById("reportMonth").value;
   const vehicleId=document.getElementById("reportVehicle").value;
-  if(!month||!vehicleId)return toast("조회 월과 차량을 선택해주세요.");
+  if(!month||!vehicleId)return toast("대상월과 차량을 선택해주세요.");
 
-  const start=month+"-01T00:00:00+09:00";
-  const endDate=new Date(month+"-01T00:00:00+09:00");
-  endDate.setMonth(endDate.getMonth()+1);
-  let rows;
   try{
-    rows=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=start_at.asc");
-  }catch(error){return toast(error.message)}
+    let rows=[],members={},purposes={},vehicle=null,facilityName="";
+    if(state.admin.profile.role==="superadmin"){
+      const result=await callAdminApi({action:"report",vehicleId,month});
+      rows=result.trips||[];
+      members=Object.fromEntries((result.members||[]).map(x=>[x.id,x.name]));
+      purposes=Object.fromEntries((result.purposes||[]).map(x=>[x.id,x.name]));
+      vehicle=result.vehicle;
+      facilityName=result.facility?.name||"";
+    }else{
+      const start=month+"-01T00:00:00+09:00";
+      const endDate=new Date(month+"-01T00:00:00+09:00");endDate.setMonth(endDate.getMonth()+1);
+      rows=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=start_at.asc");
+      members=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
+      purposes=Object.fromEntries(state.admin.purposes.map(x=>[x.id,x.name]));
+      vehicle=state.admin.vehicles.find(x=>x.id===vehicleId);
+      facilityName=state.admin.facility.name;
+    }
 
-  const members=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
-  const purposes=Object.fromEntries(state.admin.purposes.map(x=>[x.id,x.name]));
-  const vehicle=state.admin.vehicles.find(x=>x.id===vehicleId);
-  const bytes=buildMonthlyXlsx(month,rows||[],vehicle,members,purposes);
-  const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download=`차량운행일지_${vehicle?.plate_number||"차량"}_${month}.xlsx`;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-  toast("수정 가능한 월간 Excel 운행일지를 다운로드했습니다.");
+    const bytes=buildMonthlyXlsx(month,rows||[],vehicle,members,purposes,facilityName);
+    const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`차량운행일지_${vehicle?.plate_number||"차량"}_${month}.xlsx`;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+    toast("수정 가능한 월간 Excel 운행일지를 다운로드했습니다.");
+  }catch(error){toast(error.message||"운행일지를 만들지 못했습니다.")}
 };
 (async()=>{
   try{
