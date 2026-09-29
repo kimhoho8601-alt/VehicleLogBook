@@ -44,16 +44,48 @@ window.removeItem=async function(table,id){if(!confirm("삭제할까요?"))retur
 function renderAccountRegistration(){
   adminFrame(`<section class="card"><h2>관리자 계정 등록</h2><p>시설별 관리자 계정 발급을 위한 등록 메뉴입니다.</p><div class="report-grid" style="margin-top:16px"><label class="field" style="margin:0"><span>시설명</span><input id="accountFacilityName" class="input" placeholder="예: 서울○○아동보호전문기관"></label><label class="field" style="margin:0"><span>시설 코드</span><input id="accountFacilityCode" class="input" placeholder="예: SEOUL01"></label><label class="field" style="margin:0"><span>관리자 ID</span><input id="accountLoginId" class="input" placeholder="예: SEOUL01"></label></div><label class="field"><span>초기 비밀번호</span><input id="accountPassword" class="input" type="password" minlength="8" placeholder="8자 이상"></label><button class="btn primary" onclick="prepareFacilityAccount()">관리자 계정 등록</button><div id="accountGuide" class="empty" style="display:none;margin-top:14px"></div></section>`);
 }
-window.prepareFacilityAccount=function(){
+window.prepareFacilityAccount=async function(){
   const name=document.getElementById("accountFacilityName").value.trim();
   const code=document.getElementById("accountFacilityCode").value.trim().toUpperCase();
   const login=document.getElementById("accountLoginId").value.trim().toUpperCase();
   const pw=document.getElementById("accountPassword").value;
   if(!name||!code||!login||pw.length<8)return toast("시설명, 시설 코드, 관리자 ID, 8자 이상 비밀번호를 입력해주세요.");
-  const box=document.getElementById("accountGuide");
-  box.style.display="block";
-  box.innerHTML="<strong>"+esc(name)+"</strong><br>시설 코드: "+esc(code)+"<br>관리자 ID: "+esc(login)+"<br><br>계정 등록 정보가 준비되었습니다.";
-  toast("관리자 계정 등록 정보가 준비되었습니다.");
+
+  const button=document.querySelector('[onclick="prepareFacilityAccount()"]');
+  if(button){button.disabled=true;button.textContent="계정 생성 중...";}
+  try{
+    const {data:{session}}=await db.auth.getSession();
+    if(!session)throw new Error("로그인 세션이 만료되었습니다.");
+
+    const response=await fetch(SUPABASE_URL+"/functions/v1/vehicle-log-admin",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization":"Bearer "+session.access_token,
+        "apikey":SUPABASE_KEY
+      },
+      body:JSON.stringify({
+        action:"create",
+        facilityName:name,
+        facilityCode:code,
+        loginId:login,
+        password:pw
+      })
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(result.error||"계정 생성에 실패했습니다.");
+
+    const qrUrl=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
+    const box=document.getElementById("accountGuide");
+    box.style.display="block";
+    box.innerHTML="<strong>"+esc(name)+"</strong><br>시설 코드: "+esc(code)+"<br>관리자 ID: "+esc(login)+"<br><br>직원용 주소:<br><span style='word-break:break-all'>"+esc(qrUrl)+"</span>";
+    document.getElementById("accountPassword").value="";
+    toast("시설 관리자 계정을 생성했습니다.");
+  }catch(error){
+    toast(error.message||"계정 생성에 실패했습니다.");
+  }finally{
+    if(button){button.disabled=false;button.textContent="관리자 계정 등록";}
+  }
 }
 
 async function renderReport(){
