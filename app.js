@@ -1,162 +1,47 @@
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const params=new URLSearchParams(location.search);
-const queryApi=params.get("api")||"";
-if(queryApi)localStorage.setItem("vehicleApi",queryApi);
-const state={api:queryApi||localStorage.getItem("vehicleApi")||"",facility:"",vehicles:[],users:[],purposes:[],active:{}};
-const demo={facility:"샘플 아동보호전문기관",vehicles:["12가3456","34나7890"],users:["김상담","이주임","박팀장"],purposes:["가정방문","회의·교육","행정업무","물품수령"],active:{}};
+const SUPABASE_URL="https://ibxckzjregbbtqwjitwj.supabase.co";
+const SUPABASE_KEY="sb_publishable_frUifOywlvlSly4Vcmsf8g_zbLzylQd";
+const PUBLIC_API=SUPABASE_URL+"/functions/v1/vehicle-log-public";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const app=document.getElementById("app");
+const qs=new URLSearchParams(location.search);
+const state={facilityCode:(qs.get("facility")||"").trim().toUpperCase(),data:null,selectedVehicle:null,passengers:new Set(),admin:null,adminTab:"dashboard"};
 
-const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const esc=(v="")=>String(v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+function toast(msg){const el=document.getElementById("toast");el.textContent=msg;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),1800)}
+async function api(payload){const r=await fetch(PUBLIC_API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...payload,facilityCode:state.facilityCode})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"서버 연결에 실패했습니다.");return d}
+const fmtTime=v=>v?new Date(v).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false}):"";
+const fmtDate=v=>v?new Date(v).toLocaleDateString("ko-KR"):"";
 
-async function api(action,payload={}){
-  if(!state.api)return demoApi(action,payload);
-  const r=await fetch(state.api,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action,...payload})});
-  const j=await r.json();
-  if(!j.ok)throw new Error(j.error||"API 오류");
-  return j.data;
-}
+function userShell(body,title="차량 운행기록"){app.innerHTML=`<main class="shell"><header class="topbar"><div class="brand"><div class="brand-mark">VL</div><div class="brand-copy"><strong>VehicleLogBook</strong><span>${esc(title)}</span></div></div><button class="admin-link" onclick="location.href='?admin=1'">관리자</button></header>${body}</main>`}
+async function loadPublic(){if(!state.facilityCode){userShell(`<section class="hero"><p class="eyebrow">VEHICLE LOGBOOK</p><h1>시설 QR로<br>접속해주세요.</h1><p>이 페이지는 시설별 QR 주소를 통해 사용합니다.</p></section><div class="empty">시설 코드가 없는 주소입니다.<br>관리자가 배포한 QR 또는 링크로 접속해주세요.</div>`);return}
+try{const d=await api({action:"bootstrap"});state.data=d;renderVehicles()}catch(e){userShell(`<div class="empty">${esc(e.message)}</div>`,"연결 오류")}}
 
-function demoApi(action,p){
-  if(action==="bootstrap")return structuredClone(demo);
-  if(action==="startTrip"){
-    if(demo.active[p.vehicle])throw Error("이미 운행 중인 차량입니다.");
-    demo.active[p.vehicle]={...p,startTime:new Date().toLocaleString("ko-KR")};
-    return demo.active[p.vehicle];
-  }
-  if(action==="endTrip"){delete demo.active[p.vehicle];return true}
-  if(action==="getMonthlyReport"){return {facility:demo.facility,records:[]}}
-  if(action==="saveSettings"){Object.assign(demo,p.settings);return true}
-}
+function renderVehicles(){const d=state.data;const cards=d.vehicles.map(v=>{const a=d.active?.[v.id];return `<button class="vehicle-card" onclick="selectVehicle('${v.id}')"><div><div class="plate">${esc(v.plate_number)}</div><div class="label">${esc(v.label||d.facility.name)}</div>${a?`<div class="live-meta">${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</div>`:""}</div><span class="status-chip ${a?"live":"ok"}">${a?"운행 중":"운행 가능"}</span></button>`}).join("");
+userShell(`<section class="hero"><p class="eyebrow">${esc(d.facility.code)}</p><h1>${esc(d.facility.name)}</h1><p>차량을 선택해 운행을 시작하거나 종료하세요.</p></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name)}
 
-function fill(id,arr,placeholder){
-  const el=$(id);
-  el.innerHTML='<option value="">'+placeholder+'</option>'+arr.map(x=>'<option>'+esc(x)+'</option>').join("");
-}
+window.selectVehicle=function(id){state.selectedVehicle=id;state.passengers.clear();const v=state.data.vehicles.find(x=>x.id===id);const a=state.data.active?.[id];if(a)return renderEnd(v,a);renderStart(v)}
+function renderStart(v){const members=state.data.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");const purposes=state.data.purposes.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");const chips=state.data.members.map(m=>`<button type="button" class="choice" data-passenger="${m.id}" onclick="togglePassenger(this)">${esc(m.name)}</button>`).join("");
+userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button><div class="card"><p class="eyebrow">운행 시작</p><h2>${esc(v.plate_number)}</h2><p>출발 전 키로수를 확인한 뒤 운행을 시작하세요.</p><label class="field"><span>운행자</span><select id="driver" class="select"><option value="">선택</option>${members}</select></label><div class="field"><span>동승자</span><div class="multi">${chips}</div></div><label class="field"><span>운행목적</span><select id="purpose" class="select"><option value="">선택</option>${purposes}</select></label><label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: ○○구청"></label><label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="0" step="0.1" inputmode="decimal" placeholder="예: 42351"></label><button class="btn primary" onclick="startTrip()">운행 시작</button></div>`,state.data.facility.name)}
+window.togglePassenger=function(btn){const id=btn.dataset.passenger;state.passengers.has(id)?state.passengers.delete(id):state.passengers.add(id);btn.classList.toggle("active",state.passengers.has(id))}
+window.startTrip=async function(){const driverId=document.getElementById("driver").value,purposeId=document.getElementById("purpose").value,destination=document.getElementById("destination").value.trim(),startOdometer=Number(document.getElementById("startKm").value);if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("필수 항목을 모두 입력해주세요.");try{await api({action:"startTrip",vehicleId:state.selectedVehicle,driverId,passengerIds:[...state.passengers],purposeId,destination,startOdometer});toast("운행을 시작했습니다.");await loadPublic()}catch(e){toast(e.message)}}
+function renderEnd(v,a){userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button><div class="card"><p class="eyebrow">운행 중</p><h2>${esc(v.plate_number)}</h2><p><strong>${esc(a.driver_name)}</strong> 님이 ${fmtTime(a.start_at)}부터 운행 중입니다.</p><div class="field"><span>행선지</span><div class="input" style="background:#faf7f8">${esc(a.destination||"-")}</div></div><label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="0.1" inputmode="decimal" placeholder="출발 ${a.start_odometer} km 이상"></label><button class="btn dark" onclick="endTrip('${a.id}')">운행 종료</button></div>`,state.data.facility.name)}
+window.endTrip=async function(id){const endOdometer=Number(document.getElementById("endKm").value);if(!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");try{await api({action:"endTrip",tripId:id,endOdometer});toast("운행을 종료했습니다.");await loadPublic()}catch(e){toast(e.message)}}
 
-async function load(){
-  try{
-    const d=await api("bootstrap");
-    Object.assign(state,d);
-    $("#facilityName").textContent=d.facility||"시설명 미설정";
-    $("#apiState").textContent=state.api?"CONNECTED":"DEMO";
-    fill("#vehicle",d.vehicles||[],"차량 선택");
-    fill("#driver",d.users||[],"운행자 선택");
-    fill("#passenger",d.users||[],"동승자 선택");
-    fill("#purpose",d.purposes||[],"운행목적 선택");
-    fill("#reportVehicle",d.vehicles||[],"차량 선택");
-    if(!$("#reportMonth").value)$("#reportMonth").value=new Date().toISOString().slice(0,7);
-    renderAdmin();
-    syncVehicle();
-  }catch(e){alert(e.message)}
-}
+async function renderAdmin(){const {data:{session}}=await db.auth.getSession();if(!session)return renderLogin();await loadAdminContext();renderAdminHome()}
+function renderLogin(){app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정으로 로그인하면 해당 시설의 차량, 직원, 운행목적과 월간 운행일지를 관리할 수 있습니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`}
+window.adminLogin=async function(){const id=document.getElementById("loginId").value.trim().toLowerCase(),password=document.getElementById("loginPw").value;if(!id||!password)return toast("시설 ID와 비밀번호를 입력해주세요.");const {error}=await db.auth.signInWithPassword({email:id+"@vehiclelog.local",password});if(error)return toast("로그인 정보를 확인해주세요.");renderAdmin()}
+async function loadAdminContext(){const {data:{user}}=await db.auth.getUser();const {data:profile,error}=await db.from("profiles").select("id,facility_id,display_name,role").eq("id",user.id).single();if(error)throw error;const [{data:facility},{data:vehicles},{data:members},{data:purposes}]=await Promise.all([db.from("facilities").select("*").eq("id",profile.facility_id).single(),db.from("vehicles").select("*").eq("facility_id",profile.facility_id).order("sort_order"),db.from("facility_members").select("*").eq("facility_id",profile.facility_id).order("sort_order"),db.from("trip_purposes").select("*").eq("facility_id",profile.facility_id).order("sort_order")]);state.admin={profile,facility,vehicles:vehicles||[],members:members||[],purposes:purposes||[]}}
+function adminFrame(content){const a=state.admin;app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">FACILITY ADMIN</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><button class="text-btn" onclick="adminLogout()">로그아웃</button></header><nav class="admin-nav">${["dashboard","vehicles","members","purposes","report"].map(([].constructor===Array?()=>"":()=>"" )).join("")}<button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button></nav><div id="adminContent">${content}</div></main>`}
+window.setAdminTab=function(tab){state.adminTab=tab;renderAdminHome()}
+window.adminLogout=async function(){await db.auth.signOut();renderLogin()}
+async function renderAdminHome(){if(state.adminTab==="dashboard")return renderDashboard();if(state.adminTab==="vehicles")return renderManager("vehicles","차량 관리","plate_number","차량번호");if(state.adminTab==="members")return renderManager("facility_members","직원 관리","name","직원명");if(state.adminTab==="purposes")return renderManager("trip_purposes","운행목적 관리","name","운행목적");if(state.adminTab==="report")return renderReport()}
+async function renderDashboard(){const {data:active}=await db.from("trips").select("id,vehicle_id,driver_id,start_at,destination").eq("facility_id",state.admin.facility.id).eq("status","active").order("start_at");const vm=Object.fromEntries(state.admin.vehicles.map(x=>[x.id,x.plate_number])),mm=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));adminFrame(`<section class="stats"><div class="stat"><span>등록 차량</span><strong>${state.admin.vehicles.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>등록 직원</span><strong>${state.admin.members.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>현재 운행 중</span><strong>${(active||[]).length}</strong></div></section><section class="card"><h2>현재 운행</h2><p>직원 화면의 운행 상태와 실시간으로 동일하게 반영됩니다.</p><div>${(active||[]).map(x=>`<div class="trip-row"><strong>${esc(vm[x.vehicle_id]||"차량")} · ${esc(mm[x.driver_id]||"운행자")}</strong><small>${fmtTime(x.start_at)} 출발 · ${esc(x.destination||"")}</small></div>`).join("")||'<div class="empty" style="margin-top:14px">현재 운행 중인 차량이 없습니다.</div>'}</div></section>`)}
+function managerData(table){if(table==="vehicles")return state.admin.vehicles;if(table==="facility_members")return state.admin.members;return state.admin.purposes}
+function renderManager(table,title,key,label){const rows=managerData(table);adminFrame(`<section class="card"><h2>${title}</h2><p>저장하면 직원용 화면에 바로 반영됩니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><button class="icon-btn" onclick="removeItem('${table}','${r.id}')">삭제</button></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`)}
+window.addItem=async function(table,key){const value=document.getElementById("newItem").value.trim();if(!value)return;const payload={facility_id:state.admin.facility.id,[key]:value,sort_order:managerData(table).length+1};const {error}=await db.from(table).insert(payload);if(error)return toast(error.message);await loadAdminContext();renderAdminHome();toast("추가했습니다.")}
+window.removeItem=async function(table,id){if(!confirm("삭제할까요?"))return;const {error}=await db.from(table).delete().eq("id",id);if(error)return toast("운행기록에서 사용 중인 항목은 삭제할 수 없습니다.");await loadAdminContext();renderAdminHome();toast("삭제했습니다.")}
 
-function syncVehicle(){
-  const v=$("#vehicle").value,a=state.active?.[v];
-  $("#startCard").classList.toggle("hidden",!!a);
-  $("#endCard").classList.toggle("hidden",!a);
-  if(!v){
-    $("#vehicleStatus").textContent="차량을 선택해 주세요.";
-    $("#vehicleStatus").className="status";
-    return;
-  }
-  if(a){
-    $("#vehicleStatus").textContent=(a.driver||"누군가")+" 님이 운전 중입니다.";
-    $("#vehicleStatus").className="status live";
-    $("#activeSummary").textContent=[v,a.driver,a.destination,a.startTime].filter(Boolean).join(" · ");
-    $("#endKm").value=a.startKm||"";
-  }else{
-    $("#vehicleStatus").textContent="현재 운행 가능한 차량입니다.";
-    $("#vehicleStatus").className="status";
-  }
-}
+async function renderReport(){const now=new Date().toISOString().slice(0,7);adminFrame(`<section class="card"><h2>월간 차량운행일지</h2><p>월과 차량을 선택해 기존 차량운행일지 형식으로 내려받습니다.</p><div class="report-grid" style="margin-top:16px"><label class="field" style="margin:0"><span>조회 월</span><input id="reportMonth" class="input" type="month" value="${now}"></label><label class="field" style="margin:0"><span>차량</span><select id="reportVehicle" class="select"><option value="">차량 선택</option>${state.admin.vehicles.map(v=>`<option value="${v.id}">${esc(v.plate_number)}</option>`).join("")}</select></label><button class="btn dark" onclick="downloadReport()">Excel 다운로드</button></div></section>`)}
+window.downloadReport=async function(){const month=document.getElementById("reportMonth").value,vehicleId=document.getElementById("reportVehicle").value;if(!month||!vehicleId)return toast("조회 월과 차량을 선택해주세요.");const start=month+"-01T00:00:00+09:00";const endDate=new Date(month+"-01T00:00:00+09:00");endDate.setMonth(endDate.getMonth()+1);const end=endDate.toISOString();const {data,error}=await db.from("trips").select("*").eq("facility_id",state.admin.facility.id).eq("vehicle_id",vehicleId).eq("status","ended").gte("start_at",start).lt("start_at",end).order("start_at");if(error)return toast(error.message);const mm=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name])),pm=Object.fromEntries(state.admin.purposes.map(x=>[x.id,x.name])),vehicle=state.admin.vehicles.find(x=>x.id===vehicleId);const rows=(data||[]).map(r=>`<tr><td>${fmtDate(r.start_at)}</td><td>${esc(mm[r.driver_id]||"")}</td><td>${esc((r.passenger_ids||[]).map(id=>mm[id]).filter(Boolean).join(", "))}</td><td>${esc(pm[r.purpose_id]||"")}</td><td>${esc(r.destination)}</td><td>${fmtTime(r.start_at)}</td><td>${fmtTime(r.end_at)}</td><td>${r.distance??""}</td><td>${esc(r.note||"")}</td></tr>`).join("");const total=(data||[]).reduce((s,r)=>s+Number(r.distance||0),0);const first=(data||[])[0],last=(data||[]).at(-1);const html=`<html><head><meta charset="utf-8"><style>body{font-family:Malgun Gothic,sans-serif}table{border-collapse:collapse;width:100%}th,td{border:1px solid #000;padding:6px;text-align:center}h1{text-align:center}.meta td{text-align:left}</style></head><body><h1>차 량 운 행 일 지</h1><table class="meta"><tr><td><b>조회월</b> ${esc(month)}</td><td><b>차량번호</b> ${esc(vehicle?.plate_number||"")}</td><td><b>시설명</b> ${esc(state.admin.facility.name)}</td></tr><tr><td><b>전일지침</b> ${first?.start_odometer??""} km</td><td><b>금일운행거리</b> ${total.toFixed(1)} km</td><td><b>금일지침</b> ${last?.end_odometer??""} km</td></tr><tr><td><b>금일급유량</b></td><td><b>급유액</b></td><td><b>사용전표/누계전표</b></td></tr></table><br><table><thead><tr><th>일자</th><th>운전자</th><th>승차자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>운행거리(km)</th><th>비고</th></tr></thead><tbody>${rows||'<tr><td colspan="9">해당 월 운행기록 없음</td></tr>'}</tbody></table></body></html>`;const blob=new Blob(["\ufeff",html],{type:"application/vnd.ms-excel;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`차량운행일지_${vehicle?.plate_number||"차량"}_${month}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 
-function selectedPassengers(){return [...$("#passenger").selectedOptions].map(o=>o.value).filter(Boolean)}
-
-$("#vehicle").addEventListener("change",syncVehicle);
-
-$("#startBtn").onclick=async()=>{
-  const p={vehicle:$("#vehicle").value,driver:$("#driver").value,passengers:selectedPassengers(),purpose:$("#purpose").value,destination:$("#destination").value.trim(),startKm:Number($("#startKm").value)};
-  if(!p.vehicle||!p.driver||!p.purpose||!p.destination||!p.startKm)return alert("필수 항목을 모두 입력해 주세요.");
-  try{await api("startTrip",p);await load()}catch(e){alert(e.message)}
-};
-
-$("#endBtn").onclick=async()=>{
-  const vehicle=$("#vehicle").value,endKm=Number($("#endKm").value);
-  if(!endKm)return alert("도착 키로수를 입력해 주세요.");
-  try{await api("endTrip",{vehicle,endKm});await load()}catch(e){alert(e.message)}
-};
-
-function switchTab(admin){
-  $("#userView").classList.toggle("hidden",admin);
-  $("#adminView").classList.toggle("hidden",!admin);
-  $("#userTab").classList.toggle("activeTab",!admin);
-  $("#adminTab").classList.toggle("activeTab",admin);
-}
-$("#userTab").onclick=()=>switchTab(false);
-$("#adminTab").onclick=()=>switchTab(true);
-
-function editor(target,arr){
-  $(target).innerHTML=arr.map((x,i)=>'<div class="row"><input value="'+esc(x)+'" data-i="'+i+'"><button class="mini danger" data-del="'+i+'">삭제</button></div>').join("");
-  $(target).onclick=e=>{if(e.target.dataset.del!==undefined){arr.splice(Number(e.target.dataset.del),1);renderAdmin()}};
-  $(target).oninput=e=>{if(e.target.dataset.i!==undefined)arr[Number(e.target.dataset.i)]=e.target.value};
-}
-
-function renderAdmin(){
-  editor("#vehicleAdmin",state.vehicles);
-  editor("#userAdmin",state.users);
-  editor("#purposeAdmin",state.purposes);
-  $("#facilityNameAdmin").value=state.facility||"";
-  $("#apiUrl").value=state.api;
-}
-
-$$("[data-add]").forEach(b=>b.onclick=()=>{state[b.dataset.add].push("");renderAdmin()});
-
-$("#connectBtn").onclick=async()=>{
-  state.api=$("#apiUrl").value.trim();
-  localStorage.setItem("vehicleApi",state.api);
-  await load();
-};
-
-$("#copyUserLink").onclick=async()=>{
-  const api=$("#apiUrl").value.trim();
-  if(!api)return alert("먼저 API 주소를 입력해 주세요.");
-  const u=new URL(location.href);
-  u.search="";
-  u.searchParams.set("api",api);
-  try{
-    await navigator.clipboard.writeText(u.toString());
-    alert("사용자용 링크를 복사했습니다. 이 링크로 QR을 만들면 됩니다.");
-  }catch(e){
-    prompt("아래 링크를 복사해 QR로 배포하세요.",u.toString());
-  }
-};
-
-function xlsEscape(v){return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
-
-function timeOnly(v){if(!v)return "";const d=new Date(v);return isNaN(d)?String(v):d.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false})}
-function dateOnly(v){if(!v)return "";const d=new Date(v);return isNaN(d)?String(v).slice(0,10):d.toLocaleDateString("ko-KR")}
-
-function downloadMonthlyXls(data,vehicle,month){
-  const rows=(data.records||[]).map(r=>`<tr><td>${xlsEscape(dateOnly(r["출발시각"]||r["운행일자"]))}</td><td>${xlsEscape(r["운행자"])}</td><td>${xlsEscape(r["동승자"])}</td><td>${xlsEscape(r["운행목적"])}</td><td>${xlsEscape(r["행선지"])}</td><td>${xlsEscape(timeOnly(r["출발시각"]))}</td><td>${xlsEscape(timeOnly(r["종료시각"]))}</td><td>${xlsEscape(r["운행거리"])}</td><td>${xlsEscape(r["비고"]||"")}</td></tr>`).join("");
-  const total=(data.records||[]).reduce((s,r)=>s+Number(r["운행거리"]||0),0);
-  const first=(data.records||[]).find(r=>r["출발키로수"]!==""&&r["출발키로수"]!=null);
-  const last=[...(data.records||[])].reverse().find(r=>r["종료키로수"]!==""&&r["종료키로수"]!=null);
-  const html=`<html><head><meta charset="utf-8"><style>body{font-family:Malgun Gothic,sans-serif}table{border-collapse:collapse;width:100%}th,td{border:1px solid #000;padding:6px;text-align:center}h1{text-align:center}.meta td{text-align:left}.blank{height:28px}</style></head><body><h1>차 량 운 행 일 지</h1><table class="meta"><tr><td><b>조회월</b> ${xlsEscape(month)}</td><td><b>차량번호</b> ${xlsEscape(vehicle)}</td><td><b>시설명</b> ${xlsEscape(data.facility||state.facility||"")}</td></tr><tr><td><b>전일지침</b> ${xlsEscape(first?first["출발키로수"]:"")} km</td><td><b>금일운행거리</b> ${xlsEscape(total)} km</td><td><b>금일지침</b> ${xlsEscape(last?last["종료키로수"]:"")} km</td></tr><tr><td><b>금일급유량</b> </td><td><b>급유액</b> </td><td><b>사용전표/누계전표</b> </td></tr></table><br><table><thead><tr><th>일자</th><th>운전자</th><th>승차자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>운행거리(km)</th><th>비고</th></tr></thead><tbody>${rows||`<tr><td colspan="9" class="blank">해당 월 운행기록 없음</td></tr>`}</tbody></table></body></html>`;
-  const blob=new Blob(["\ufeff",html],{type:"application/vnd.ms-excel;charset=utf-8"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`차량운행일지_${vehicle}_${month}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
-
-$("#downloadReportBtn").onclick=async()=>{
-  const vehicle=$("#reportVehicle").value,month=$("#reportMonth").value;
-  if(!vehicle||!month)return alert("차량번호와 조회 월을 선택해 주세요.");
-  try{const data=await api("getMonthlyReport",{vehicle,month});downloadMonthlyXls(data,vehicle,month)}catch(e){alert(e.message)}
-};
-
-$("#saveAdminBtn").onclick=async()=>{
-  try{
-    await api("saveSettings",{pin:$("#adminPin").value,settings:{facility:$("#facilityNameAdmin").value.trim(),vehicles:state.vehicles.filter(Boolean),users:state.users.filter(Boolean),purposes:state.purposes.filter(Boolean)}});
-    alert("저장했습니다.");
-    await load();
-  }catch(e){alert(e.message)}
-};
-
-load();
+(async()=>{if(qs.get("admin")==="1")renderAdmin();else loadPublic()})();
