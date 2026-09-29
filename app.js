@@ -1,7 +1,7 @@
 const SUPABASE_URL="https://ibxckzjregbbtqwjitwj.supabase.co";
 const SUPABASE_KEY="sb_publishable_frUifOywlvlSly4Vcmsf8g_zbLzylQd";
 const PUBLIC_API=SUPABASE_URL+"/functions/v1/vehicle-log-public";
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
 const app=document.getElementById("app");
 const qs=new URLSearchParams(location.search);
 const state={facilityCode:(qs.get("facility")||"").trim().toUpperCase(),data:null,selectedVehicle:null,passengers:new Set(),admin:null,adminTab:"dashboard"};
