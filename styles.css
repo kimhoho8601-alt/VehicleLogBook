@@ -733,3 +733,29 @@ h1,h2,h3,p{word-break:keep-all}
   .editor-bottom-actions .btn{flex:1}
   .editor-bottom-status{font-size:11px}
 }
+
+.row-drag-head,.row-drag-cell{width:38px;min-width:38px;text-align:center!important}
+.drag-handle{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:32px;
+  border-radius:8px;
+  color:#9b8f92;
+  font-size:18px;
+  font-weight:900;
+  line-height:1;
+  cursor:grab;
+  user-select:none;
+  touch-action:none;
+}
+.drag-handle:hover{background:var(--red-pale);color:var(--red)}
+.edit-trip-row.dragging{opacity:.55}
+.edit-trip-row.dragging td{background:#fff1f4!important}
+.edit-trip-row.reordered td{background:#fff7f9}
+.edit-trip-row.reordered .row-drag-cell{box-shadow:inset 3px 0 0 var(--red)}
+@media(max-width:720px){
+  .row-drag-head,.row-drag-cell{position:sticky;left:0;z-index:3;background:#fff}
+  .drag-handle{width:30px;height:34px}
+}
