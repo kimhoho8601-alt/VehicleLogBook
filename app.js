@@ -707,9 +707,12 @@ function toIsoKst(date,time){
 function memberOptions(members,selected){
   return members.map(m=>`<option value="${m.id}" ${m.id===selected?"selected":""}>${esc(m.name)}</option>`).join("");
 }
-function passengerOptions(members,selectedIds){
+function passengerPicker(members,selectedIds){
   const selected=new Set(selectedIds||[]);
-  return members.map(m=>`<option value="${m.id}" ${selected.has(m.id)?"selected":""}>${esc(m.name)}</option>`).join("");
+  const selectedNames=members.filter(m=>selected.has(m.id)).map(m=>m.name);
+  const label=selectedNames.length?selectedNames.join(", "):"동행자 없음";
+  const choices=members.map(m=>`<label class="passenger-option"><input type="checkbox" value="${m.id}" ${selected.has(m.id)?"checked":""} onchange="updatePassengerPicker(this)"><span>${esc(m.name)}</span></label>`).join("");
+  return `<details class="passenger-picker"><summary><span class="passenger-picker-label">${esc(label)}</span></summary><div class="passenger-menu"><div class="passenger-menu-head"><strong>동행자 선택</strong><button type="button" onclick="clearPassengerPicker(this)">선택 해제</button></div><div class="passenger-options">${choices||'<div class="field-help">등록된 직원이 없습니다.</div>'}</div></div></details>`;
 }
 function purposeOptions(purposes,selected){
   return purposes.map(p=>`<option value="${p.id}" ${p.id===selected?"selected":""}>${esc(p.name)}</option>`).join("");
@@ -718,7 +721,7 @@ function reportRowHtml(r,i,data){
   return `<tr class="edit-trip-row" data-trip-id="${r.id}" data-index="${i}">
     <td><input class="cell-input edit-date" type="date" value="${seoulDateInput(r.start_at)}" onchange="markReportRowChanged(this)"></td>
     <td><select class="cell-select edit-driver" onchange="markReportRowChanged(this)">${memberOptions(data.members,r.driver_id)}</select></td>
-    <td><select class="cell-select multi-select edit-passengers" multiple size="2" onchange="markReportRowChanged(this)">${passengerOptions(data.members,r.passenger_ids||[])}</select></td>
+    <td class="passenger-cell">${passengerPicker(data.members,r.passenger_ids||[])}</td>
     <td><select class="cell-select edit-purpose" onchange="markReportRowChanged(this)">${purposeOptions(data.purposes,r.purpose_id)}</select></td>
     <td><input class="cell-input edit-destination" value="${esc(r.destination||"")}" onchange="markReportRowChanged(this)"></td>
     <td><input class="cell-input edit-start-time" type="time" value="${seoulTimeInput(r.start_at)}" onchange="markReportRowChanged(this)"></td>
@@ -748,6 +751,28 @@ window.openReportEditor=async function(){
     adminFrame('<div class="empty">'+esc(error.message||"운행기록을 불러오지 못했습니다.")+'</div>');
   }
 }
+window.updatePassengerPicker=function(input){
+  const picker=input.closest(".passenger-picker");
+  const row=input.closest(".edit-trip-row");
+  if(!picker||!row)return;
+  const names=[...picker.querySelectorAll('input[type="checkbox"]:checked')].map(x=>x.nextElementSibling?.textContent||"").filter(Boolean);
+  const label=picker.querySelector(".passenger-picker-label");
+  if(label)label.textContent=names.length?names.join(", "):"동행자 없음";
+  markReportRowChanged(input);
+}
+window.clearPassengerPicker=function(button){
+  const picker=button.closest(".passenger-picker");
+  if(!picker)return;
+  picker.querySelectorAll('input[type="checkbox"]').forEach(x=>x.checked=false);
+  const label=picker.querySelector(".passenger-picker-label");
+  if(label)label.textContent="동행자 없음";
+  const row=picker.closest(".edit-trip-row");
+  if(row)row.classList.add("changed");
+  const count=document.querySelectorAll(".edit-trip-row.changed").length;
+  const countLabel=document.getElementById("editCountLabel");
+  if(countLabel)countLabel.textContent=count?count+"건 변경됨":"변경된 기록 없음";
+}
+
 window.markReportRowChanged=function(el){
   const row=el.closest(".edit-trip-row");
   if(row)row.classList.add("changed");
@@ -765,7 +790,7 @@ window.updateReportDistance=function(el){
 }
 function collectReportRows(){
   return [...document.querySelectorAll(".edit-trip-row")].map(row=>{
-    const selectedPassengers=[...row.querySelector(".edit-passengers").selectedOptions].map(o=>o.value);
+    const selectedPassengers=[...row.querySelectorAll('.passenger-picker input[type="checkbox"]:checked')].map(o=>o.value);
     const date=row.querySelector(".edit-date").value;
     const startTime=row.querySelector(".edit-start-time").value;
     const endTime=row.querySelector(".edit-end-time").value;
