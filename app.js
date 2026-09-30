@@ -12,19 +12,81 @@ async function api(payload){const r=await fetch(PUBLIC_API,{method:"POST",header
 const fmtTime=v=>v?new Date(v).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false}):"";
 const fmtDate=v=>v?new Date(v).toLocaleDateString("ko-KR"):"";
 
-function userShell(body,title="차량 운행기록"){app.innerHTML=`<main class="shell"><header class="topbar"><div class="brand"><div class="brand-mark">VL</div><div class="brand-copy"><strong>VehicleLogBook</strong><span>${esc(title)}</span></div></div><button class="admin-link" onclick="location.href='?admin=1'">관리자</button></header>${body}</main>`}
+function userShell(body,title="차량 운행기록"){
+  app.innerHTML=`<main class="shell"><header class="topbar"><div class="brand"><div class="brand-mark">VL</div><div class="brand-copy"><strong>VehicleLogBook</strong><span>${esc(title)}</span></div></div><button class="admin-link" onclick="location.href='?admin=1'">관리자</button></header>${body}<footer class="app-footer">안전한 이동, 정확한 기록</footer></main>`
+}
 async function loadPublic(){if(!state.facilityCode){userShell(`<section class="hero"><p class="eyebrow">VEHICLE LOGBOOK</p><h1>시설 QR로<br>접속해주세요.</h1><p>이 페이지는 시설별 QR 주소를 통해 사용합니다.</p></section><div class="empty">시설 코드가 없는 주소입니다.<br>관리자가 배포한 QR 또는 링크로 접속해주세요.</div>`);return}
 try{const d=await api({action:"bootstrap"});state.data=d;renderVehicles()}catch(e){userShell(`<div class="empty">${esc(e.message)}</div>`,"연결 오류")}}
 
-function renderVehicles(){const d=state.data;const cards=d.vehicles.map(v=>{const a=d.active?.[v.id];return `<button class="vehicle-card" onclick="selectVehicle('${v.id}')"><div><div class="plate">${esc(v.plate_number)}</div><div class="label">${esc(v.label||d.facility.name)}</div>${a?`<div class="live-meta">${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</div>`:""}</div><span class="status-chip ${a?"live":"ok"}">${a?"운행 중":"운행 가능"}</span></button>`}).join("");
-userShell(`<section class="hero"><p class="eyebrow">${esc(d.facility.code)}</p><h1>${esc(d.facility.name)}</h1><p>차량을 선택해 운행을 시작하거나 종료하세요.</p></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name)}
+function renderVehicles(){
+  const d=state.data;
+  const cards=d.vehicles.map(v=>{
+    const a=d.active?.[v.id];
+    return `<button class="vehicle-card" onclick="selectVehicle('${v.id}')"><div class="vehicle-main"><span class="vehicle-dot"></span><div><div class="plate">${esc(v.plate_number)}</div><div class="label">${esc(v.label||d.facility.name)}</div>${a?`<div class="live-meta">${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</div>`:""}</div></div><span class="status-chip ${a?"live":"ok"}">${a?"운행 중":"운행 가능"}</span></button>`;
+  }).join("");
+  userShell(`<section class="hero"><p class="eyebrow">${esc(d.facility.code)}</p><h1>${esc(d.facility.name)}</h1><p>사용할 차량을 선택하면 운행 기록을 바로 시작할 수 있습니다.</p></section><section class="safety-banner"><div class="safety-symbol">✓</div><div><strong>오늘도 안전운전</strong><p>출발 전 20초만 확인해 주세요. 차량 상태와 탑승 정보를 확인한 뒤 운행을 시작합니다.</p></div></section><section class="section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
+}
 
 window.selectVehicle=function(id){state.selectedVehicle=id;state.passengers.clear();const v=state.data.vehicles.find(x=>x.id===id);const a=state.data.active?.[id];if(a)return renderEnd(v,a);renderStart(v)}
-function renderStart(v){const members=state.data.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");const purposes=state.data.purposes.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");const chips=state.data.members.map(m=>`<button type="button" class="choice" data-passenger="${m.id}" onclick="togglePassenger(this)">${esc(m.name)}</button>`).join("");
-userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button><div class="card"><p class="eyebrow">운행 시작</p><h2>${esc(v.plate_number)}</h2><p>출발 전 키로수를 확인한 뒤 운행을 시작하세요.</p><label class="field"><span>운행자</span><select id="driver" class="select"><option value="">선택</option>${members}</select></label><div class="field"><span>동승자</span><div class="multi">${chips}</div></div><label class="field"><span>운행목적</span><select id="purpose" class="select"><option value="">선택</option>${purposes}</select></label><label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: ○○구청"></label><label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="0" step="0.1" inputmode="decimal" placeholder="예: 42351"></label><button class="btn primary" onclick="startTrip()">운행 시작</button></div>`,state.data.facility.name)}
+function renderStart(v){
+  const members=state.data.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
+  const purposes=state.data.purposes.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  const chips=state.data.members.map(m=>`<button type="button" class="choice" data-passenger="${m.id}" onclick="togglePassenger(this)">${esc(m.name)}</button>`).join("");
+  userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button>
+  <section class="trip-heading"><div><p class="eyebrow">운행 시작</p><h1>${esc(v.plate_number)}</h1><p>운행 정보를 입력하고 출발 전 체크를 완료해주세요.</p></div><span class="status-chip ok">운행 가능</span></section>
+  <section class="safety-check-card"><div class="safety-check-title"><span class="safety-number">20</span><div><strong>출발 전 20초 체크</strong><p>아래 항목을 모두 확인하면 운행 시작 버튼이 활성화됩니다.</p></div></div>
+    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>차량 상태</strong><small>타이어·외관·계기판 경고등에 이상이 없습니다.</small></span></label>
+    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>탑승 안전</strong><small>운전자·동승자를 확인하고 안전벨트를 착용했습니다.</small></span></label>
+    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>출발 정보</strong><small>운행목적·행선지·출발 키로수를 확인했습니다.</small></span></label>
+  </section>
+  <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 정보</span><h2>출발 기록 입력</h2></div><span class="required-note">필수 입력</span></div>
+    <label class="field"><span>운행자</span><select id="driver" class="select"><option value="">운행자를 선택하세요</option>${members}</select></label>
+    <div class="field"><span>동승자 <em>선택</em></span><div class="multi">${chips||'<span class="field-help">등록된 동승자가 없습니다.</span>'}</div></div>
+    <label class="field"><span>운행목적</span><select id="purpose" class="select"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
+    <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정"></label>
+    <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="0" step="0.1" inputmode="decimal" placeholder="예: 42351"></label>
+    <button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>체크 완료 후 운행 시작</button>
+  </div>`,state.data.facility.name);
+}
 window.togglePassenger=function(btn){const id=btn.dataset.passenger;state.passengers.has(id)?state.passengers.delete(id):state.passengers.add(id);btn.classList.toggle("active",state.passengers.has(id))}
-window.startTrip=async function(){const driverId=document.getElementById("driver").value,purposeId=document.getElementById("purpose").value,destination=document.getElementById("destination").value.trim(),startOdometer=Number(document.getElementById("startKm").value);if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("필수 항목을 모두 입력해주세요.");try{await api({action:"startTrip",vehicleId:state.selectedVehicle,driverId,passengerIds:[...state.passengers],purposeId,destination,startOdometer});toast("운행을 시작했습니다.");await loadPublic()}catch(e){toast(e.message)}}
-function renderEnd(v,a){userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button><div class="card"><p class="eyebrow">운행 중</p><h2>${esc(v.plate_number)}</h2><p><strong>${esc(a.driver_name)}</strong> 님이 ${fmtTime(a.start_at)}부터 운행 중입니다.</p><div class="field"><span>행선지</span><div class="input" style="background:#faf7f8">${esc(a.destination||"-")}</div></div><label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="0.1" inputmode="decimal" placeholder="출발 ${a.start_odometer} km 이상"></label><button class="btn dark" onclick="endTrip('${a.id}')">운행 종료</button></div>`,state.data.facility.name)}
+window.updateSafetyReady=function(){
+  const checks=[...document.querySelectorAll(".safety-check")];
+  const ready=checks.length>0&&checks.every(x=>x.checked);
+  const btn=document.getElementById("startTripButton");
+  if(btn){
+    btn.disabled=!ready;
+    btn.textContent=ready?"운행 시작하기":"체크 완료 후 운행 시작";
+  }
+}
+window.startTrip=async function(){
+  const checks=[...document.querySelectorAll(".safety-check")];
+  if(checks.some(x=>!x.checked))return toast("출발 전 체크사항을 모두 확인해주세요.");
+  const driverId=document.getElementById("driver").value;
+  const purposeId=document.getElementById("purpose").value;
+  const destination=document.getElementById("destination").value.trim();
+  const startOdometer=Number(document.getElementById("startKm").value);
+  if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("운행 정보를 모두 입력해주세요.");
+  const btn=document.getElementById("startTripButton");
+  if(btn){btn.disabled=true;btn.textContent="운행 시작 중...";}
+  try{
+    await api({action:"startTrip",vehicleId:state.selectedVehicle,driverId,passengerIds:[...state.passengers],purposeId,destination,startOdometer});
+    toast("운행을 시작했습니다.");
+    await loadPublic();
+  }catch(e){
+    toast(e.message);
+    updateSafetyReady();
+  }
+}
+function renderEnd(v,a){
+  userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button>
+  <section class="trip-live-banner"><div class="pulse-dot"></div><div><span>현재 운행 중</span><strong>${esc(v.plate_number)}</strong><p>${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</p></div></section>
+  <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 종료</span><h2>도착 기록 입력</h2></div></div>
+    <div class="trip-summary"><div><span>행선지</span><strong>${esc(a.destination||"-")}</strong></div><div><span>출발 키로수</span><strong>${Number(a.start_odometer).toLocaleString()} km</strong></div></div>
+    <label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="0.1" inputmode="decimal" placeholder="${Number(a.start_odometer).toLocaleString()} km 이상 입력"></label>
+    <p class="field-help">도착 키로수는 출발 키로수보다 작을 수 없습니다.</p>
+    <button class="btn primary" onclick="endTrip('${a.id}')">운행 종료하기</button>
+  </div>`,state.data.facility.name);
+}
 window.endTrip=async function(id){const endOdometer=Number(document.getElementById("endKm").value);if(!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");try{await api({action:"endTrip",tripId:id,endOdometer});toast("운행을 종료했습니다.");await loadPublic()}catch(e){toast(e.message)}}
 
 const SESSION_KEY="vehiclelogbook_session_v2";
