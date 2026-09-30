@@ -468,3 +468,93 @@ h1,h2,h3,p{word-break:keep-all}
   .safety-check-title strong{font-size:15px}
   .choice{padding:8px 10px}
 }
+
+/* 직원용 첫 화면: 모바일 우선 */
+.staff-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:58px;
+  padding:10px 8px 14px;
+  border-bottom:1px solid #f0e7e9;
+  text-align:center;
+}
+.staff-topbar strong{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:-.035em;
+  color:var(--ink);
+}
+.staff-home-hero{
+  padding:30px 6px 22px;
+  text-align:center;
+}
+.staff-home-hero h1{
+  max-width:620px;
+  margin:0 auto;
+  font-size:clamp(28px,5vw,38px);
+  line-height:1.25;
+  letter-spacing:-.045em;
+  text-wrap:balance;
+}
+.staff-home-hero p{
+  margin:10px auto 0;
+  color:var(--muted);
+  font-size:14px;
+}
+.staff-section-head{
+  margin-top:8px;
+  margin-bottom:10px;
+}
+.staff-section-head>div{
+  width:100%;
+}
+.staff-section-head span{
+  color:var(--red);
+}
+.staff-section-head strong{
+  font-size:18px;
+}
+.global-purpose-add{
+  grid-template-columns:minmax(260px,1fr) auto;
+  max-width:760px;
+}
+.global-purpose-add .btn{
+  width:auto;
+  margin:0;
+}
+@media(max-width:720px){
+  .staff-topbar{
+    min-height:54px;
+    padding:8px 4px 12px;
+  }
+  .staff-topbar strong{font-size:17px}
+  .staff-home-hero{
+    padding:24px 4px 18px;
+  }
+  .staff-home-hero h1{
+    font-size:27px;
+  }
+  .staff-home-hero p{
+    font-size:13px;
+  }
+  .staff-section-head{
+    margin-top:4px;
+  }
+  .staff-section-head strong{
+    font-size:17px;
+  }
+  .vehicle-card{
+    min-height:82px;
+    border-radius:16px;
+  }
+  .vehicle-card .plate{
+    font-size:22px;
+  }
+  .global-purpose-add{
+    grid-template-columns:1fr;
+  }
+  .global-purpose-add .btn{
+    width:100%;
+  }
+}
