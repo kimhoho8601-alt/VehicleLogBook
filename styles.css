@@ -780,3 +780,22 @@ h1,h2,h3,p{word-break:keep-all}
   .login-card{padding:22px 18px}
   .admin-login-card h1{font-size:25px}
 }
+
+.remember-login{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:14px;
+  color:#5e5356;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  user-select:none;
+}
+.remember-login input{
+  width:17px;
+  height:17px;
+  margin:0;
+  accent-color:var(--red);
+}
+.remember-login span{line-height:1.4}
