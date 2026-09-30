@@ -380,4 +380,4 @@ h1,h2,h3,p{word-break:keep-all}
 }
 @media(prefers-reduced-motion:reduce){
   *{scroll-behavior:auto!important;transition:none!important;animation:none!important}
-}
+}.odometer-help{margin-top:8px!important;padding:10px 12px;border-radius:10px;background:#fff8f9;border:1px solid #f1d5dc;color:#65585c}.odometer-help strong{color:var(--red);font-weight:900}
