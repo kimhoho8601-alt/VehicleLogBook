@@ -799,3 +799,320 @@ h1,h2,h3,p{word-break:keep-all}
   accent-color:var(--red);
 }
 .remember-login span{line-height:1.4}
+
+
+/* 직원용 차량 운행일지 - 모바일 우선 리파인 */
+.staff-shell{
+  position:relative;
+  max-width:800px;
+  background:
+    radial-gradient(circle at 12% 6%, rgba(215,0,42,.045), transparent 25%),
+    radial-gradient(circle at 92% 34%, rgba(215,0,42,.025), transparent 28%),
+    #fff;
+}
+.staff-topbar{
+  position:relative;
+  min-height:62px;
+  padding:12px 8px 17px;
+  border-bottom:1px solid #f0e5e8;
+}
+.staff-topbar::before{
+  content:"";
+  position:absolute;
+  top:-22px;
+  left:50%;
+  width:54px;
+  height:4px;
+  border-radius:999px;
+  background:var(--red);
+  transform:translateX(-50%);
+}
+.staff-topbar strong{
+  font-size:19px;
+  letter-spacing:-.04em;
+}
+.staff-home-hero{
+  position:relative;
+  padding:34px 12px 26px;
+}
+.facility-accent{
+  width:34px;
+  height:4px;
+  margin:0 auto 15px;
+  border-radius:999px;
+  background:var(--red);
+}
+.staff-home-hero h1{
+  max-width:680px;
+  color:#191516;
+  font-size:clamp(30px,5.5vw,42px);
+  font-weight:900;
+  line-height:1.2;
+  letter-spacing:-.055em;
+  text-wrap:balance;
+}
+.staff-home-hero p{
+  margin-top:12px;
+  font-size:14px;
+  color:#76696d;
+}
+.staff-section-head{
+  margin:8px 2px 12px;
+}
+.staff-section-head span{
+  margin-bottom:4px;
+  font-size:11px;
+  letter-spacing:.02em;
+}
+.staff-section-head strong{
+  font-size:19px;
+  letter-spacing:-.035em;
+}
+.vehicle-grid{gap:12px}
+.vehicle-card{
+  min-height:100px;
+  padding:18px 18px;
+  border-color:#eadadd;
+  border-radius:20px;
+  box-shadow:0 10px 30px rgba(70,18,30,.065);
+}
+.vehicle-card:hover{
+  border-color:#d8aeb8;
+  box-shadow:0 16px 36px rgba(70,18,30,.10);
+}
+.vehicle-card.is-live{
+  border-color:#efcbd4;
+  background:linear-gradient(90deg,#fff 0%,#fff 68%,#fff9fa 100%);
+}
+.vehicle-main{gap:14px;min-width:0}
+.vehicle-icon{
+  width:44px;
+  height:44px;
+  flex:0 0 44px;
+  display:grid;
+  place-items:center;
+  border-radius:14px;
+  background:#f7f3f4;
+  color:#75696c;
+}
+.vehicle-card.is-live .vehicle-icon{
+  background:var(--red-soft);
+  color:var(--red);
+}
+.vehicle-icon svg{width:25px;height:25px}
+.vehicle-copy{min-width:0}
+.vehicle-card .plate{
+  font-size:23px;
+  line-height:1.15;
+  letter-spacing:-.035em;
+}
+.vehicle-card .label{
+  max-width:360px;
+  margin-top:5px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+}
+.live-meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:8px;
+  color:var(--red);
+  font-size:11px;
+}
+.live-dot{
+  width:6px;
+  height:6px;
+  border-radius:50%;
+  background:var(--red);
+  box-shadow:0 0 0 4px rgba(215,0,42,.08);
+}
+.vehicle-card-side{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  flex:0 0 auto;
+}
+.vehicle-card-side .status-chip{
+  max-width:150px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.vehicle-chevron{
+  color:#a39599;
+  font-size:27px;
+  font-weight:400;
+  line-height:1;
+}
+.status-chip.live{
+  background:#fff0f3;
+  color:var(--red);
+  border:1px solid #f8dce3;
+}
+.status-chip.ok{
+  border:1px solid #dcefe6;
+}
+.staff-brand-footer{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  padding:42px 16px 8px;
+}
+.staff-brand-footer img{
+  display:block;
+  width:min(280px,72vw);
+  height:auto;
+  max-height:none;
+  object-fit:contain;
+  filter:none;
+  opacity:1;
+}
+
+/* 직원용 동승자 드롭다운 */
+.staff-passenger-select{
+  width:100%;
+  position:relative;
+}
+.staff-passenger-select summary{
+  width:100%;
+  min-height:50px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:13px 14px;
+  border:1px solid var(--line-strong);
+  border-radius:12px;
+  background:#fff;
+  color:#757074;
+  cursor:pointer;
+  list-style:none;
+  transition:border-color .15s ease,box-shadow .15s ease;
+}
+.staff-passenger-select summary::-webkit-details-marker{display:none}
+.staff-passenger-select[open] summary{
+  border-color:var(--red);
+  box-shadow:0 0 0 3px rgba(215,0,42,.08);
+  border-bottom-left-radius:10px;
+  border-bottom-right-radius:10px;
+}
+.staff-passenger-select #passengerSummary{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.staff-passenger-select #passengerSummary.has-selection{
+  color:var(--ink);
+  font-weight:700;
+}
+.staff-select-chevron{
+  flex:0 0 auto;
+  color:#62595c;
+  font-size:18px;
+  transition:transform .15s ease;
+}
+.staff-passenger-select[open] .staff-select-chevron{transform:rotate(180deg)}
+.staff-passenger-menu{
+  margin-top:7px;
+  padding:10px;
+  border:1px solid #e6d9dc;
+  border-radius:12px;
+  background:#fff;
+  box-shadow:0 12px 28px rgba(57,20,29,.09);
+}
+.staff-passenger-menu-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:2px 2px 9px;
+  border-bottom:1px solid #f1e9eb;
+}
+.staff-passenger-menu-head strong{
+  font-size:12px;
+  font-weight:900;
+}
+.staff-passenger-menu-head button{
+  border:0;
+  background:transparent;
+  color:var(--red);
+  padding:4px 2px;
+  font-size:11px;
+  font-weight:900;
+}
+.staff-passenger-options{
+  display:grid;
+  gap:3px;
+  max-height:220px;
+  overflow:auto;
+  padding-top:7px;
+}
+.staff-passenger-option{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-height:40px;
+  padding:7px 8px;
+  border-radius:9px;
+  font-size:13px;
+  cursor:pointer;
+}
+.staff-passenger-option:hover{background:var(--red-pale)}
+.staff-passenger-option input{
+  width:17px;
+  height:17px;
+  margin:0;
+  accent-color:var(--red);
+}
+.staff-sort-help{
+  margin-top:2px;
+  color:#978b8e;
+}
+
+@media(max-width:540px){
+  .staff-shell{padding:14px 14px 42px}
+  .staff-topbar{
+    min-height:56px;
+    padding:9px 4px 13px;
+  }
+  .staff-topbar::before{top:-14px}
+  .staff-topbar strong{font-size:17px}
+  .staff-home-hero{padding:27px 4px 21px}
+  .facility-accent{margin-bottom:12px}
+  .staff-home-hero h1{
+    font-size:clamp(27px,8vw,33px);
+    line-height:1.24;
+  }
+  .staff-home-hero p{font-size:13px}
+  .staff-section-head strong{font-size:17px}
+  .vehicle-card{
+    min-height:92px;
+    padding:15px 14px;
+    gap:10px;
+    border-radius:17px;
+  }
+  .vehicle-main{gap:11px}
+  .vehicle-icon{
+    width:39px;
+    height:39px;
+    flex-basis:39px;
+    border-radius:12px;
+  }
+  .vehicle-icon svg{width:23px;height:23px}
+  .vehicle-card .plate{font-size:21px}
+  .vehicle-card .label{max-width:185px;font-size:11px}
+  .vehicle-card-side{gap:6px}
+  .vehicle-card-side .status-chip{
+    max-width:108px;
+    padding:6px 8px;
+    font-size:10px;
+  }
+  .vehicle-chevron{display:none}
+  .staff-brand-footer{padding:34px 18px 6px}
+  .staff-brand-footer img{width:min(245px,76vw)}
+  .staff-passenger-select summary{min-height:50px;font-size:16px}
+  .staff-passenger-option{min-height:43px;font-size:14px}
+}
