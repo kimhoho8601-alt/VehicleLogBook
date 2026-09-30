@@ -759,3 +759,24 @@ h1,h2,h3,p{word-break:keep-all}
   .row-drag-head,.row-drag-cell{position:sticky;left:0;z-index:3;background:#fff}
   .drag-handle{width:30px;height:34px}
 }
+
+.admin-login-card{padding-top:30px}
+.login-brand{
+  display:inline-flex;
+  align-items:center;
+  min-height:34px;
+  padding:7px 11px;
+  margin-bottom:12px;
+  border-radius:999px;
+  background:var(--red-soft);
+  color:var(--red);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:-.02em;
+}
+.admin-login-card .btn.primary{min-height:50px}
+@media(max-width:540px){
+  .login-wrap{padding:16px}
+  .login-card{padding:22px 18px}
+  .admin-login-card h1{font-size:25px}
+}
