@@ -381,3 +381,18 @@ h1,h2,h3,p{word-break:keep-all}
 @media(prefers-reduced-motion:reduce){
   *{scroll-behavior:auto!important;transition:none!important;animation:none!important}
 }.odometer-help{margin-top:8px!important;padding:10px 12px;border-radius:10px;background:#fff8f9;border:1px solid #f1d5dc;color:#65585c}.odometer-help strong{color:var(--red);font-weight:900}
+.member-add-form{grid-template-columns:minmax(180px,1fr) auto auto auto;align-items:center}
+.global-member-add{grid-template-columns:minmax(180px,.8fr) minmax(200px,1fr) auto auto auto}
+.bulk-btn{width:auto!important;margin:0!important;padding:11px 13px!important;border:1px solid #e4cfd5!important;background:#fff!important;color:#7c293d!important;box-shadow:none!important;white-space:nowrap}
+.bulk-btn:hover{border-color:#d49aa8!important;background:var(--red-pale)!important;color:var(--red)!important}
+.bulk-btn.emphasis{background:var(--red-pale)!important;border-color:#efb9c6!important;color:var(--red)!important}
+@media(max-width:900px){
+  .global-member-add{grid-template-columns:1fr 1fr}
+  .global-member-add .select,.global-member-add .input,.global-member-add .btn.primary{grid-column:1/-1}
+  .global-member-add .bulk-btn{width:100%!important}
+}
+@media(max-width:720px){
+  .member-add-form{grid-template-columns:1fr 1fr}
+  .member-add-form .input,.member-add-form .btn.primary{grid-column:1/-1}
+  .member-add-form .bulk-btn{width:100%!important;white-space:normal}
+}
