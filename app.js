@@ -187,19 +187,37 @@ const eq=v=>"eq."+encodeURIComponent(v);
 
 async function renderAdmin(){
   try{
+    const requestedLogin=(qs.get("login")||"").trim().toLowerCase();
+    if(readSession()&&requestedLogin){
+      try{
+        const currentUser=await authUser();
+        const email=String(currentUser?.email||"").toLowerCase();
+        const currentLogin=email==="fomhr@sc.or.kr"?"master":email.replace(/@vehiclelog\.local$/,"");
+        if(currentLogin!==requestedLogin){
+          await signOut();
+          state.admin=null;
+          return renderLogin();
+        }
+      }catch(_){
+        writeSession(null);
+        state.admin=null;
+        return renderLogin();
+      }
+    }
     if(!readSession())return renderLogin();
     await loadAdminContext();
     return renderAdminHome();
   }catch(error){
     console.error("admin render failed",error);
     writeSession(null);
+    state.admin=null;
     renderLogin();
     setTimeout(()=>toast("세션을 초기화했습니다. 다시 로그인해주세요."),50);
   }
 }
 function renderLogin(){
   const sharedLogin=(qs.get("login")||"").trim().toUpperCase();
-  app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정으로 로그인하면 해당 시설의 차량, 직원, 운행목적과 월간 운행일지를 관리할 수 있습니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01" value="${esc(sharedLogin)}"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`;
+  app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정은 해당 시설의 차량·직원·월간 운행일지를 관리합니다. 운행목적 코드는 MASTER에서만 설정합니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01" value="${esc(sharedLogin)}"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`;
 }
 window.adminLogin=async function(){
   const id=document.getElementById("loginId").value.trim().toLowerCase();
@@ -238,7 +256,8 @@ async function loadAdminContext(){
 }
 function adminFrame(content){
   const a=state.admin;
-  app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${a.profile.role==="superadmin"?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${a.profile.role==="superadmin"?`<button class="${state.adminTab==="accounts"?"active":""}" onclick="setAdminTab('accounts')">관리자 계정 등록</button>`:""}</nav><div id="adminContent">${content}</div></main>`;
+  const masterNav=a.profile.role==="superadmin"?`<button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="accounts"?"active":""}" onclick="setAdminTab('accounts')">관리자 계정 등록</button>`:"";
+  app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${a.profile.role==="superadmin"?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${masterNav}</nav><div id="adminContent">${content}</div></main>`;
 }
 window.setAdminTab=function(tab){state.adminTab=tab;renderAdminHome()}
 window.adminLogout=async function(){await signOut();state.admin=null;renderLogin()}
@@ -254,6 +273,9 @@ async function getOverview(force=false){
   return state.overview;
 }
 async function renderAdminHome(){
+  if(state.admin.profile.role!=="superadmin"&&(state.adminTab==="purposes"||state.adminTab==="accounts")){
+    state.adminTab="dashboard";
+  }
   if(state.adminTab==="dashboard")return renderDashboard();
   if(state.adminTab==="vehicles")return state.admin.profile.role==="superadmin"?renderGlobalManager("vehicles"):renderManager("vehicles","차량 관리","plate_number","차량번호");
   if(state.adminTab==="members")return state.admin.profile.role==="superadmin"?renderGlobalManager("members"):renderManager("facility_members","직원 관리","name","직원명");
