@@ -1116,3 +1116,18 @@ h1,h2,h3,p{word-break:keep-all}
   .staff-passenger-select summary{min-height:50px;font-size:16px}
   .staff-passenger-option{min-height:43px;font-size:14px}
 }
+
+.reset-data-btn{
+  color:#b00020;
+  border-color:#f1cbd3;
+  background:#fff7f8;
+}
+.reset-data-btn:hover{
+  color:#8e001a;
+  border-color:#e6a9b6;
+  background:#fff0f3;
+}
+.reset-data-btn:disabled{
+  opacity:.55;
+  cursor:wait;
+}
