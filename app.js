@@ -217,11 +217,15 @@ async function renderAdmin(){
 }
 function renderLogin(){
   const sharedLogin=(qs.get("login")||"").trim().toUpperCase();
-  app.innerHTML=`<main class="login-wrap"><section class="login-card admin-login-card"><div class="login-brand">차량 운행일지 관리</div><h1>관리자 로그인</h1><p>시설 관리자와 시스템 관리자가 사용하는 관리 페이지입니다. 직원 운행등록은 시설별 전용 링크에서 이용합니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: JB" value="${esc(sharedLogin)}"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button></section></main>`;
+  const savedLogin=(localStorage.getItem("vehiclelog_admin_id")||"").trim().toUpperCase();
+  const loginValue=sharedLogin||savedLogin;
+  const rememberChecked=Boolean(savedLogin);
+  app.innerHTML=`<main class="login-wrap"><section class="login-card admin-login-card"><div class="login-brand">차량 운행일지 관리</div><h1>관리자 로그인</h1><p>시설 관리자와 시스템 관리자가 사용하는 관리 페이지입니다. 직원 운행등록은 시설별 전용 링크에서 이용합니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: JB" value="${esc(loginValue)}" ${loginValue?"":"autofocus"}></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password" ${loginValue?"autofocus":""}></label><label class="remember-login"><input id="rememberLoginId" type="checkbox" ${rememberChecked?"checked":""}><span>이 브라우저에 시설 ID 저장</span></label><button class="btn primary" onclick="adminLogin()">로그인</button></section></main>`;
 }
 window.adminLogin=async function(){
   const id=document.getElementById("loginId").value.trim().toLowerCase();
   const password=document.getElementById("loginPw").value;
+  const remember=document.getElementById("rememberLoginId")?.checked===true;
   if(!id||!password)return toast("시설 ID와 비밀번호를 입력해주세요.");
   const email=id==="master"?"fomhr@sc.or.kr":(id.includes("@")?id:id+"@vehiclelog.local");
   const button=document.querySelector('[onclick="adminLogin()"]');
@@ -229,6 +233,8 @@ window.adminLogin=async function(){
   try{
     await signIn(email,password);
     await loadAdminContext();
+    if(remember)localStorage.setItem("vehiclelog_admin_id",id.toUpperCase());
+    else localStorage.removeItem("vehiclelog_admin_id");
     state.adminTab="dashboard";
     renderAdminHome();
   }catch(error){
