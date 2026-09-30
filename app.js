@@ -186,7 +186,7 @@ async function renderAdminHome(){
   if(state.adminTab==="dashboard")return renderDashboard();
   if(state.adminTab==="vehicles")return state.admin.profile.role==="superadmin"?renderGlobalManager("vehicles"):renderManager("vehicles","차량 관리","plate_number","차량번호");
   if(state.adminTab==="members")return state.admin.profile.role==="superadmin"?renderGlobalManager("members"):renderManager("facility_members","직원 관리","name","직원명");
-  if(state.adminTab==="purposes")return renderManager("trip_purposes","운행목적 관리","name","운행목적");
+  if(state.adminTab==="purposes")return state.admin.profile.role==="superadmin"?renderGlobalManager("purposes"):renderManager("trip_purposes","운행목적 관리","name","운행목적");
   if(state.adminTab==="report")return renderReport();
   if(state.adminTab==="accounts"&&state.admin.profile.role==="superadmin")return renderAccountRegistration();
   state.adminTab="dashboard";
@@ -213,22 +213,37 @@ async function renderDashboard(){
   const mm=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
   adminFrame(`<section class="stats"><div class="stat"><span>등록 차량</span><strong>${state.admin.vehicles.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>등록 직원</span><strong>${state.admin.members.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>현재 운행 중</span><strong>${(active||[]).length}</strong></div></section><section class="card"><h2>현재 운행</h2><p>직원 화면의 운행 상태와 실시간으로 동일하게 반영됩니다.</p><div>${(active||[]).map(x=>`<div class="trip-row"><strong>${esc(vm[x.vehicle_id]||"차량")} · ${esc(mm[x.driver_id]||"운행자")}</strong><small>${fmtTime(x.start_at)} 출발 · ${esc(x.destination||"")}</small></div>`).join("")||'<div class="empty" style="margin-top:14px">현재 운행 중인 차량이 없습니다.</div>'}</div></section>`);
 }
+
+const globalManagerConfig={
+  vehicles:{title:"전체 시설 차량",table:"vehicles",key:"plate_number",label:"차량번호"},
+  members:{title:"전체 시설 직원",table:"facility_members",key:"name",label:"직원명"},
+  purposes:{title:"전체 시설 운행목적",table:"trip_purposes",key:"name",label:"운행목적"}
+};
+
 async function renderGlobalManager(type){
-  const title=type==="vehicles"?"전체 시설 차량":"전체 시설 직원";
-  adminFrame('<div class="empty">'+title+' 정보를 불러오는 중입니다.</div>');
+  const cfg=globalManagerConfig[type];
+  if(!cfg)return;
+  adminFrame('<div class="empty">'+cfg.title+' 정보를 불러오는 중입니다.</div>');
   try{
     const o=await getOverview(true);
     const facilityMap=Object.fromEntries((o.facilities||[]).map(f=>[f.id,f]));
-    const rows=(type==="vehicles"?o.vehicles:o.members)||[];
+    let rows=[];
+    if(type==="vehicles")rows=o.vehicles||[];
+    else if(type==="members")rows=o.members||[];
+    else rows=await restRequest("trip_purposes?select=*&order=name.asc");
+
+    const facilityOptions=(o.facilities||[]).map(f=>`<option value="${f.id}">${esc(f.name)} (${esc(f.code)})</option>`).join("");
     const body=rows.map(r=>{
       const f=facilityMap[r.facility_id]||{};
-      const main=type==="vehicles"?r.plate_number:r.name;
+      const value=r[cfg.key]||"";
       const sub=type==="vehicles"?(r.label||""):"";
-      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(main||"")}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td></tr>`;
+      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
-    adminFrame(`<section class="card"><h2>${title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설을 통합 조회합니다. 각 시설 관리자는 자기 시설 데이터만 조회·수정합니다.</p><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${type==="vehicles"?"차량":"직원"}</th><th>상태</th></tr></thead><tbody>${body||'<tr><td colspan="3">등록된 데이터가 없습니다.</td></tr>'}</tbody></table></div></section>`);
+
+    adminFrame(`<section class="card"><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.</p><div class="global-add-form"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button></div><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="4">등록된 데이터가 없습니다.</td></tr>'}</tbody></table></div></section>`);
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
 }
+
 function managerData(table){
   if(table==="vehicles")return state.admin.vehicles;
   if(table==="facility_members")return state.admin.members;
@@ -236,29 +251,66 @@ function managerData(table){
 }
 function renderManager(table,title,key,label){
   const rows=managerData(table);
-  adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 저장하면 해당 시설의 직원용 화면에 바로 반영됩니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><button class="icon-btn" onclick="removeItem('${table}','${r.id}')">삭제</button></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
+  adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 입력·수정·삭제한 내용은 해당 시설의 직원용 화면에 바로 반영됩니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
 }
+
 window.addItem=async function(table,key){
   const value=document.getElementById("newItem").value.trim();
-  if(!value)return;
-  if(state.admin.profile.role==="superadmin")return toast("시설별 관리자 계정에서 추가해주세요.");
+  if(!value)return toast("입력값을 확인해주세요.");
   const payload={facility_id:state.admin.facility.id,[key]:value,sort_order:managerData(table).length+1};
   try{
     await restRequest(table,{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(payload)});
     await loadAdminContext();
     renderAdminHome();
     toast("추가했습니다.");
-  }catch(error){toast(error.message)}
+  }catch(error){toast(error.message||"추가하지 못했습니다.")}
 }
+
+window.addGlobalItem=async function(type){
+  const cfg=globalManagerConfig[type];
+  const facilityId=document.getElementById("globalFacility")?.value;
+  const value=document.getElementById("globalValue")?.value.trim();
+  if(!cfg||!facilityId||!value)return toast("시설과 입력값을 확인해주세요.");
+  try{
+    await restRequest(cfg.table,{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({facility_id:facilityId,[cfg.key]:value,sort_order:999})});
+    state.overview=null;
+    await renderGlobalManager(type);
+    toast("추가했습니다.");
+  }catch(error){toast(error.message||"추가하지 못했습니다.")}
+}
+
+window.editItem=async function(table,id,key,encodedValue){
+  const current=decodeURIComponent(encodedValue||"");
+  const next=prompt("수정할 값을 입력해주세요.",current);
+  if(next===null)return;
+  const value=next.trim();
+  if(!value)return toast("빈 값으로 수정할 수 없습니다.");
+  try{
+    await restRequest(table+"?id="+eq(id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({[key]:value})});
+    if(state.admin.profile.role==="superadmin"){
+      state.overview=null;
+      await renderAdminHome();
+    }else{
+      await loadAdminContext();
+      await renderAdminHome();
+    }
+    toast("수정했습니다.");
+  }catch(error){toast(error.message||"수정하지 못했습니다.")}
+}
+
 window.removeItem=async function(table,id){
-  if(state.admin.profile.role==="superadmin")return toast("시설별 관리자 계정에서 삭제해주세요.");
   if(!confirm("삭제할까요?"))return;
   try{
     await restRequest(table+"?id="+eq(id),{method:"DELETE"});
-    await loadAdminContext();
-    renderAdminHome();
+    if(state.admin.profile.role==="superadmin"){
+      state.overview=null;
+      await renderAdminHome();
+    }else{
+      await loadAdminContext();
+      await renderAdminHome();
+    }
     toast("삭제했습니다.");
-  }catch(error){toast("운행기록에서 사용 중인 항목은 삭제할 수 없습니다.");}
+  }catch(error){toast("운행기록에서 사용 중인 항목은 삭제할 수 없습니다.")}
 }
 
 function renderAccountRegistration(){
