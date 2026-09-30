@@ -609,3 +609,96 @@ h1,h2,h3,p{word-break:keep-all}
     width:100%!important;
   }
 }
+
+.passenger-cell{min-width:190px;position:relative}
+.passenger-picker{position:relative;min-width:170px}
+.passenger-picker summary{
+  list-style:none;
+  min-height:38px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:8px 30px 8px 10px;
+  border:1px solid #dfd4d7;
+  border-radius:8px;
+  background:#fff;
+  color:var(--ink);
+  font-size:12px;
+  cursor:pointer;
+  position:relative;
+}
+.passenger-picker summary::-webkit-details-marker{display:none}
+.passenger-picker summary::after{
+  content:"▾";
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  color:#8f8084;
+  font-size:11px;
+}
+.passenger-picker[open] summary{
+  border-color:var(--red);
+  box-shadow:0 0 0 2px rgba(215,0,42,.08);
+}
+.passenger-picker-label{
+  display:block;
+  max-width:150px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.passenger-menu{
+  position:absolute;
+  z-index:20;
+  top:calc(100% + 6px);
+  left:0;
+  min-width:210px;
+  max-width:260px;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#fff;
+  box-shadow:0 12px 30px rgba(46,17,24,.14);
+}
+.passenger-menu-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:2px 2px 8px;
+  border-bottom:1px solid #f0e7e9;
+}
+.passenger-menu-head strong{font-size:11px}
+.passenger-menu-head button{
+  border:0;
+  background:transparent;
+  color:var(--red);
+  font-size:10px;
+  font-weight:900;
+  padding:3px 0;
+}
+.passenger-options{
+  display:grid;
+  gap:4px;
+  max-height:220px;
+  overflow:auto;
+  padding-top:7px;
+}
+.passenger-option{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:32px;
+  padding:6px 7px;
+  border-radius:7px;
+  cursor:pointer;
+  font-size:12px;
+}
+.passenger-option:hover{background:var(--red-pale)}
+.passenger-option input{width:16px;height:16px;accent-color:var(--red)}
+@media(max-width:720px){
+  .passenger-menu{position:fixed;left:14px;right:14px;top:auto;bottom:18px;max-width:none;min-width:0}
+  .passenger-options{max-height:40vh}
+}
