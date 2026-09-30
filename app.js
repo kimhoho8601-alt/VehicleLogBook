@@ -15,7 +15,7 @@ const fmtDate=v=>v?new Date(v).toLocaleDateString("ko-KR"):"";
 function userShell(body,title="차량 운행일지 등록"){
   app.innerHTML=`<main class="shell"><header class="staff-topbar"><strong>차량 운행일지 등록</strong></header>${body}<footer class="app-footer">안전한 이동, 정확한 기록</footer></main>`
 }
-async function loadPublic(){if(!state.facilityCode){userShell(`<section class="hero"><p class="eyebrow">VEHICLE LOGBOOK</p><h1>시설 QR로<br>접속해주세요.</h1><p>이 페이지는 시설별 QR 주소를 통해 사용합니다.</p></section><div class="empty">시설 코드가 없는 주소입니다.<br>관리자가 배포한 QR 또는 링크로 접속해주세요.</div>`);return}
+async function loadPublic(){if(!state.facilityCode){return renderAdmin()}
 try{const d=await api({action:"bootstrap"});state.data=d;renderVehicles()}catch(e){userShell(`<div class="empty">${esc(e.message)}</div>`,"연결 오류")}}
 
 function renderVehicles(){
@@ -217,7 +217,7 @@ async function renderAdmin(){
 }
 function renderLogin(){
   const sharedLogin=(qs.get("login")||"").trim().toUpperCase();
-  app.innerHTML=`<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>관리자 로그인</h1><p>시설별 관리자 계정은 해당 시설의 차량·직원·월간 운행일지를 관리합니다. 운행목적 코드는 MASTER에서만 설정합니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: SEOUL01" value="${esc(sharedLogin)}"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button><button class="btn light" onclick="location.href='./'">직원 화면으로</button></section></main>`;
+  app.innerHTML=`<main class="login-wrap"><section class="login-card admin-login-card"><div class="login-brand">차량 운행일지 관리</div><h1>관리자 로그인</h1><p>시설 관리자와 시스템 관리자가 사용하는 관리 페이지입니다. 직원 운행등록은 시설별 전용 링크에서 이용합니다.</p><label class="field"><span>시설 ID</span><input id="loginId" class="input" autocomplete="username" placeholder="예: JB" value="${esc(sharedLogin)}"></label><label class="field"><span>비밀번호</span><input id="loginPw" class="input" type="password" autocomplete="current-password"></label><button class="btn primary" onclick="adminLogin()">로그인</button></section></main>`;
 }
 window.adminLogin=async function(){
   const id=document.getElementById("loginId").value.trim().toLowerCase();
@@ -1132,9 +1132,10 @@ window.downloadReport=async function(){
 (async()=>{
   try{
     if(qs.get("admin")==="1") await renderAdmin();
-    else await loadPublic();
+    else if(state.facilityCode) await loadPublic();
+    else await renderAdmin();
   }catch(error){
     console.error("app start failed",error);
-    app.innerHTML='<main class="login-wrap"><section class="login-card"><div class="brand-mark">VL</div><h1>VehicleLogBook</h1><p>화면을 불러오는 중 오류가 발생했습니다.</p><button class="btn light" onclick="location.reload()">새로고침</button></section></main>';
+    app.innerHTML='<main class="login-wrap"><section class="login-card"><div class="login-brand">차량 운행일지 관리</div><h1>화면을 불러오지 못했습니다.</h1><p>잠시 후 다시 시도해주세요.</p><button class="btn light" onclick="location.reload()">새로고침</button></section></main>';
   }
 })();
