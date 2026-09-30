@@ -319,6 +319,116 @@ function renderManager(table,title,key,label){
   adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 입력·수정·삭제한 내용은 해당 시설의 직원용 화면에 바로 반영됩니다.${table==="facility_members"?" 직원이 많으면 엑셀 양식으로 한 번에 등록할 수 있습니다.":""}</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form ${table==="facility_members"?"member-add-form":""}"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button>${memberBulk}</div></section>`);
 }
 
+function getMemberUploadFacility(isGlobal){
+  if(!isGlobal)return {id:state.admin.facility.id,name:state.admin.facility.name,code:state.admin.facility.code};
+  const facilityId=document.getElementById("globalFacility")?.value;
+  if(!facilityId){toast("직원을 등록할 시설을 먼저 선택해주세요.");return null}
+  const facility=state.overview?.facilities?.find(f=>f.id===facilityId);
+  return facility?{id:facility.id,name:facility.name,code:facility.code}:{id:facilityId,name:"선택 시설",code:""};
+}
+
+function safeFileName(value){
+  return String(value||"시설").replace(/[\\/:*?"<>|]/g,"_").trim()||"시설";
+}
+
+let xlsxLoaderPromise=null;
+function ensureXlsxLibrary(){
+  if(window.XLSX)return Promise.resolve(window.XLSX);
+  if(xlsxLoaderPromise)return xlsxLoaderPromise;
+  const sources=["https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js","https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"];
+  xlsxLoaderPromise=new Promise((resolve,reject)=>{
+    let index=0;
+    const loadNext=()=>{
+      if(index>=sources.length){xlsxLoaderPromise=null;reject(new Error("엑셀 파일 처리 모듈을 불러오지 못했습니다."));return}
+      const script=document.createElement("script");
+      script.src=sources[index++];
+      script.async=true;
+      script.onload=()=>{if(window.XLSX)resolve(window.XLSX);else{script.remove();loadNext()}};
+      script.onerror=()=>{script.remove();loadNext()};
+      document.head.appendChild(script);
+    };
+    loadNext();
+  });
+  return xlsxLoaderPromise;
+}
+
+window.downloadMemberTemplate=async function(isGlobal=false){
+  const facility=getMemberUploadFacility(Boolean(isGlobal));
+  if(!facility)return;
+  try{
+    const XLSX=await ensureXlsxLibrary();
+    const rows=[["직원명","입력 안내"],["",facility.name+" 직원 목록"],["","A열에 직원명을 한 행에 한 명씩 입력한 뒤 저장해주세요."]];
+    for(let i=0;i<50;i++)rows.push(["",""]);
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws["!cols"]=[{wch:24},{wch:54}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"직원업로드");
+    XLSX.writeFile(wb,"직원업로드양식_"+safeFileName(facility.name)+".xlsx");
+    toast("직원 업로드 양식을 다운로드했습니다.");
+  }catch(error){toast(error.message||"업로드 양식을 만들지 못했습니다.")}
+}
+
+async function importMemberWorkbook(file,facility,isGlobal){
+  const XLSX=await ensureXlsxLibrary();
+  const data=await file.arrayBuffer();
+  const wb=XLSX.read(data,{type:"array"});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  if(!ws)throw new Error("첫 번째 시트를 읽을 수 없습니다.");
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+  if(!rows.length)throw new Error("업로드할 직원명이 없습니다.");
+  const header=(rows[0]||[]).map(v=>String(v||"").trim());
+  const nameCol=header.findIndex(v=>["직원명","이름","성명"].includes(v));
+  if(nameCol<0)throw new Error("양식의 직원명 열을 확인해주세요.");
+  const rawNames=rows.slice(1).map(r=>String((r||[])[nameCol]||"").trim()).filter(Boolean);
+  if(!rawNames.length)throw new Error("직원명을 입력한 뒤 다시 첨부해주세요.");
+  const uniqueNames=[...new Set(rawNames)];
+  let existing=[];
+  if(isGlobal){
+    const o=await getOverview(true);
+    existing=(o.members||[]).filter(m=>m.facility_id===facility.id);
+  }else{
+    existing=state.admin.members||[];
+  }
+  const existingNames=new Set(existing.map(m=>String(m.name||"").trim()));
+  const newNames=uniqueNames.filter(name=>!existingNames.has(name));
+  const skipped=rawNames.length-newNames.length;
+  if(!newNames.length){toast("새로 등록할 직원이 없습니다. 기존 직원명과 중복되는지 확인해주세요.");return}
+  let message=facility.name+"에 직원 "+newNames.length+"명을 등록할까요?";
+  if(skipped>0)message+="\n중복 또는 반복 입력 "+skipped+"건은 제외됩니다.";
+  if(!confirm(message))return;
+  const maxSort=existing.reduce((m,x)=>Math.max(m,Number(x.sort_order)||0),0);
+  const payload=newNames.map((name,i)=>({facility_id:facility.id,name,is_active:true,sort_order:maxSort+i+1}));
+  await restRequest("facility_members",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(payload)});
+  if(isGlobal){
+    state.overview=null;
+    await renderGlobalManager("members");
+  }else{
+    await loadAdminContext();
+    await renderAdminHome();
+  }
+  toast("직원 "+newNames.length+"명을 등록했습니다.");
+}
+
+window.uploadMemberTemplate=function(isGlobal=false){
+  const facility=getMemberUploadFacility(Boolean(isGlobal));
+  if(!facility)return;
+  const input=document.createElement("input");
+  input.type="file";
+  input.accept=".xlsx,.xls";
+  input.style.display="none";
+  input.onchange=async()=>{
+    const file=input.files?.[0];
+    if(!file){input.remove();return}
+    try{
+      toast("엑셀 파일을 확인하고 있습니다.");
+      await importMemberWorkbook(file,facility,Boolean(isGlobal));
+    }catch(error){toast(error.message||"직원 엑셀을 불러오지 못했습니다.")}
+    finally{input.remove()}
+  };
+  document.body.appendChild(input);
+  input.click();
+}
+
 window.addItem=async function(table,key){
   const value=document.getElementById("newItem").value.trim();
   if(!value)return toast("입력값을 확인해주세요.");
