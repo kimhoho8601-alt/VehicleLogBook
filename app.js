@@ -12,8 +12,8 @@ async function api(payload){const r=await fetch(PUBLIC_API,{method:"POST",header
 const fmtTime=v=>v?new Date(v).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false}):"";
 const fmtDate=v=>v?new Date(v).toLocaleDateString("ko-KR"):"";
 
-function userShell(body,title="차량 운행기록"){
-  app.innerHTML=`<main class="shell"><header class="topbar"><div class="brand"><div class="brand-mark">VL</div><div class="brand-copy"><strong>VehicleLogBook</strong><span>${esc(title)}</span></div></div><button class="admin-link" onclick="location.href='?admin=1'">관리자</button></header>${body}<footer class="app-footer">안전한 이동, 정확한 기록</footer></main>`
+function userShell(body,title="차량 운행일지 등록"){
+  app.innerHTML=`<main class="shell"><header class="staff-topbar"><strong>차량 운행일지 등록</strong></header>${body}<footer class="app-footer">안전한 이동, 정확한 기록</footer></main>`
 }
 async function loadPublic(){if(!state.facilityCode){userShell(`<section class="hero"><p class="eyebrow">VEHICLE LOGBOOK</p><h1>시설 QR로<br>접속해주세요.</h1><p>이 페이지는 시설별 QR 주소를 통해 사용합니다.</p></section><div class="empty">시설 코드가 없는 주소입니다.<br>관리자가 배포한 QR 또는 링크로 접속해주세요.</div>`);return}
 try{const d=await api({action:"bootstrap"});state.data=d;renderVehicles()}catch(e){userShell(`<div class="empty">${esc(e.message)}</div>`,"연결 오류")}}
@@ -24,7 +24,7 @@ function renderVehicles(){
     const a=d.active?.[v.id];
     return `<button class="vehicle-card" onclick="selectVehicle('${v.id}')"><div class="vehicle-main"><span class="vehicle-dot"></span><div><div class="plate">${esc(v.plate_number)}</div><div class="label">${esc(v.label||d.facility.name)}</div>${a?`<div class="live-meta">${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</div>`:""}</div></div><span class="status-chip ${a?"live":"ok"}">${a?"운행 중":"운행 가능"}</span></button>`;
   }).join("");
-  userShell(`<section class="hero vehicle-hero"><p class="eyebrow">${esc(d.facility.code)}</p><h1>${esc(d.facility.name)}</h1><p>운행할 차량을 선택해주세요. 차량을 선택하면 출발 전 안전확인 화면으로 이동합니다.</p></section><section class="section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
+  userShell(`<section class="hero vehicle-hero staff-home-hero"><h1>${esc(d.facility.name)}</h1><p>운행할 차량을 선택해주세요.</p></section><section class="section-head staff-section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
 }
 
 window.selectVehicle=function(id){state.selectedVehicle=id;state.passengers.clear();const v=state.data.vehicles.find(x=>x.id===id);const a=state.data.active?.[id];if(a)return renderEnd(v,a);renderStart(v)}
@@ -230,7 +230,7 @@ async function loadAdminContext(){
     restRequest("facilities?select=*&id="+eq(profile.facility_id)),
     restRequest("vehicles?select=*&facility_id="+eq(profile.facility_id)+"&order=sort_order.asc,plate_number.asc"),
     restRequest("facility_members?select=*&facility_id="+eq(profile.facility_id)+"&order=sort_order.asc,name.asc"),
-    restRequest("trip_purposes?select=*&facility_id="+eq(profile.facility_id)+"&order=sort_order.asc,name.asc")
+    restRequest("trip_purposes?select=*&facility_id=is.null&order=sort_order.asc,name.asc")
   ]);
   const facility=facilities?.[0];
   if(!facility)throw new Error("시설 정보를 찾을 수 없습니다.");
@@ -257,7 +257,7 @@ async function renderAdminHome(){
   if(state.adminTab==="dashboard")return renderDashboard();
   if(state.adminTab==="vehicles")return state.admin.profile.role==="superadmin"?renderGlobalManager("vehicles"):renderManager("vehicles","차량 관리","plate_number","차량번호");
   if(state.adminTab==="members")return state.admin.profile.role==="superadmin"?renderGlobalManager("members"):renderManager("facility_members","직원 관리","name","직원명");
-  if(state.adminTab==="purposes")return state.admin.profile.role==="superadmin"?renderGlobalManager("purposes"):renderPurposeReadOnly();
+  if(state.adminTab==="purposes")return state.admin.profile.role==="superadmin"?renderGlobalPurposeManager():renderPurposeReadOnly();
   if(state.adminTab==="report")return renderReport();
   if(state.adminTab==="accounts"&&state.admin.profile.role==="superadmin")return renderAccountRegistration();
   state.adminTab="dashboard";
@@ -316,9 +316,33 @@ async function renderGlobalManager(type){
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
 }
 
+async function renderGlobalPurposeManager(){
+  adminFrame('<div class="empty">공통 운행목적을 불러오는 중입니다.</div>');
+  try{
+    const rows=await restRequest("trip_purposes?select=*&facility_id=is.null&order=sort_order.asc,name.asc");
+    const body=(rows||[]).map(r=>`<tr><td><strong>${esc(r.name)}</strong></td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('trip_purposes','${r.id}','name','${encodeURIComponent(r.name||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('trip_purposes','${r.id}')">삭제</button></div></td></tr>`).join("");
+    adminFrame(`<section class="card"><h2>공통 운행목적 코드</h2><p>운행목적은 시설별로 따로 만들지 않습니다. MASTER에서 관리한 공통 코드가 모든 시설 직원 화면에 동일하게 적용됩니다.</p><div class="global-add-form global-purpose-add"><input id="globalPurposeValue" class="input" placeholder="운행목적 입력"><button class="btn primary" onclick="addGlobalPurpose()">추가</button></div><div class="table-scroll"><table class="admin-table"><thead><tr><th>운행목적</th><th>상태</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="3">등록된 운행목적이 없습니다.</td></tr>'}</tbody></table></div></section>`);
+  }catch(error){
+    adminFrame('<div class="empty">'+esc(error.message||"운행목적을 불러오지 못했습니다.")+'</div>');
+  }
+}
+window.addGlobalPurpose=async function(){
+  const value=document.getElementById("globalPurposeValue")?.value.trim();
+  if(!value)return toast("운행목적을 입력해주세요.");
+  try{
+    const existing=await restRequest("trip_purposes?select=id,name&facility_id=is.null&name="+eq(value));
+    if(existing?.length)return toast("이미 등록된 운행목적입니다.");
+    const current=await restRequest("trip_purposes?select=id,sort_order&facility_id=is.null&order=sort_order.desc&limit=1");
+    const nextSort=(Number(current?.[0]?.sort_order)||0)+1;
+    await restRequest("trip_purposes",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify({facility_id:null,name:value,is_active:true,sort_order:nextSort})});
+    toast("공통 운행목적을 추가했습니다.");
+    await renderGlobalPurposeManager();
+  }catch(error){toast(error.message||"운행목적을 추가하지 못했습니다.")}
+}
+
 function renderPurposeReadOnly(){
   const rows=state.admin.purposes||[];
-  adminFrame(`<section class="card"><h2>운행목적</h2><p>운행목적 코드는 시스템 관리자(MASTER)에서 공통 관리합니다. 시설 관리자는 현재 적용 중인 항목을 조회만 할 수 있습니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r.name)}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><span class="status-chip ok">공통 코드</span></div>`).join("")||'<div class="empty">등록된 운행목적이 없습니다. 시스템 관리자에게 문의해주세요.</div>'}</div></section>`);
+  adminFrame(`<section class="card"><h2>운행목적</h2><p>운행목적은 MASTER가 공통 코드로 관리합니다. 모든 시설에 동일한 항목이 적용되며 시설 관리자는 조회만 할 수 있습니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r.name)}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><span class="status-chip ok">공통 코드</span></div>`).join("")||'<div class="empty">등록된 운행목적이 없습니다. 시스템 관리자에게 문의해주세요.</div>'}</div></section>`);
 }
 
 function managerData(table){
