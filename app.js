@@ -518,11 +518,11 @@ function buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName=""){
   const sheetRows=[];
   const add=(n,cells,h)=>sheetRows.push(`<row r="${n}"${h?` ht="${h}" customHeight="1"`:""}>${cells.join("")}</row>`);
   add(1,[xlsxText("H1","결재",7),xlsxText("I1","담당",2),xlsxText("J1","팀장",2)],28);
-  add(2,[xlsxText("I2","",3),xlsxText("J2","",3)],34);
+  add(2,[xlsxText("H2","",7),xlsxText("I2","",3),xlsxText("J2","",3)],34);
   add(3,[],8);
   add(4,[xlsxText("A4","차량운행일지",1)],30);
   add(5,[],8);
-  add(6,[xlsxText("A6","차량",2),xlsxText("B6",vehicle?.plate_number||"",6),xlsxText("D6","시설",2),xlsxText("E6",facilityName,6)],23);
+  add(6,[xlsxText("A6","차량",2),xlsxText("B6",vehicle?.plate_number||"",6),xlsxText("C6","",3),xlsxText("D6","시설",2),xlsxText("E6",facilityName,6),xlsxText("F6","",3),xlsxText("G6","",3)],23);
   add(7,[xlsxText("A7","대상월",2),xlsxText("B7",month,6)],23);
   add(8,["날짜","운전자","동행자","용무","행선지","출발시간","도착시간","출발km","도착km","운행거리"].map((x,i)=>xlsxText(String.fromCharCode(65+i)+"8",x,2)),25);
   const bodyCount=Math.max(30,rows.length);
