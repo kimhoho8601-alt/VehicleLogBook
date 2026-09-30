@@ -24,7 +24,7 @@ function renderVehicles(){
     const a=d.active?.[v.id];
     return `<button class="vehicle-card" onclick="selectVehicle('${v.id}')"><div class="vehicle-main"><span class="vehicle-dot"></span><div><div class="plate">${esc(v.plate_number)}</div><div class="label">${esc(v.label||d.facility.name)}</div>${a?`<div class="live-meta">${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</div>`:""}</div></div><span class="status-chip ${a?"live":"ok"}">${a?"운행 중":"운행 가능"}</span></button>`;
   }).join("");
-  userShell(`<section class="hero"><p class="eyebrow">${esc(d.facility.code)}</p><h1>${esc(d.facility.name)}</h1><p>사용할 차량을 선택하면 운행 기록을 바로 시작할 수 있습니다.</p></section><section class="safety-banner"><div class="safety-symbol">✓</div><div><strong>오늘도 안전운전</strong><p>출발 전 20초만 확인해 주세요. 차량 상태와 탑승 정보를 확인한 뒤 운행을 시작합니다.</p></div></section><section class="section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
+  userShell(`<section class="hero vehicle-hero"><p class="eyebrow">${esc(d.facility.code)}</p><h1>${esc(d.facility.name)}</h1><p>운행할 차량을 선택해주세요. 차량을 선택하면 출발 전 안전확인 화면으로 이동합니다.</p></section><section class="section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
 }
 
 window.selectVehicle=function(id){state.selectedVehicle=id;state.passengers.clear();const v=state.data.vehicles.find(x=>x.id===id);const a=state.data.active?.[id];if(a)return renderEnd(v,a);renderStart(v)}
@@ -32,32 +32,40 @@ function renderStart(v){
   const members=state.data.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   const purposes=state.data.purposes.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
   const chips=state.data.members.map(m=>`<button type="button" class="choice" data-passenger="${m.id}" onclick="togglePassenger(this)">${esc(m.name)}</button>`).join("");
-  userShell(`<button class="back" onclick="renderVehicles()">← 차량 다시 선택</button>
-  <section class="trip-heading"><div><p class="eyebrow">운행 시작</p><h1>${esc(v.plate_number)}</h1><p>운행 정보를 입력하고 출발 전 체크를 완료해주세요.</p></div><span class="status-chip ok">운행 가능</span></section>
-  <section class="safety-check-card"><div class="safety-check-title"><span class="safety-number">20</span><div><strong>출발 전 20초 체크</strong><p>아래 항목을 모두 확인하면 운행 시작 버튼이 활성화됩니다.</p></div></div>
-    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>차량 상태</strong><small>타이어·외관·계기판 경고등에 이상이 없습니다.</small></span></label>
-    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>탑승 안전</strong><small>운전자·동승자를 확인하고 안전벨트를 착용했습니다.</small></span></label>
-    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>출발 정보</strong><small>운행목적·행선지·출발 키로수를 확인했습니다.</small></span></label>
+  userShell(`<button class="back mobile-back" onclick="renderVehicles()">← 차량 다시 선택</button>
+  <section class="selected-vehicle-card"><div><span>선택 차량</span><strong>${esc(v.plate_number)}</strong><small>${esc(v.label||state.data.facility.name)}</small></div><span class="status-chip ok">운행 가능</span></section>
+  <section class="safety-check-card"><div class="safety-check-title"><span class="safety-number">20</span><div><strong>출발 전 20초 안전확인</strong><p>차량을 움직이기 전에 아래 3가지만 확인해주세요.</p></div></div>
+    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>차량 상태 확인</strong><small>타이어·외관·계기판 경고등에 이상이 없습니다.</small></span></label>
+    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>탑승 안전 확인</strong><small>운전자와 동승자 모두 안전벨트를 착용했습니다.</small></span></label>
+    <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>안전운전 준비</strong><small>주행 중 휴대전화 조작 없이 교통법규를 준수하겠습니다.</small></span></label>
   </section>
   <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 정보</span><h2>출발 기록 입력</h2></div><span class="required-note">필수 입력</span></div>
-    <label class="field"><span>운행자</span><select id="driver" class="select"><option value="">운행자를 선택하세요</option>${members}</select></label>
+    <label class="field"><span>운행자</span><select id="driver" class="select" onchange="updateSafetyReady()"><option value="">운행자를 선택하세요</option>${members}</select></label>
     <div class="field"><span>동승자 <em>선택</em></span><div class="multi">${chips||'<span class="field-help">등록된 동승자가 없습니다.</span>'}</div></div>
-    <label class="field"><span>운행목적</span><select id="purpose" class="select"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
-    <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정"></label>
-    <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="${state.data.lastOdometer?.[v.id]??""}" placeholder="예: 42351"></label>
-    ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 필요하면 더 큰 값으로 수정하세요.</p>`:""}
-    <button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>체크 완료 후 운행 시작</button>
-  </div>`,state.data.facility.name);
+    <label class="field"><span>운행목적</span><select id="purpose" class="select" onchange="updateSafetyReady()"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
+    <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정" oninput="updateSafetyReady()"></label>
+    <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="${state.data.lastOdometer?.[v.id]??""}" placeholder="예: 42351" oninput="updateSafetyReady()"></label>
+    ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 실제 계기판 값이 더 크면 수정해주세요.</p>`:""}
+  </div>
+  <div class="start-action-bar"><button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>안전 체크를 완료해주세요</button></div>`,state.data.facility.name);
+  updateSafetyReady();
 }
 window.togglePassenger=function(btn){const id=btn.dataset.passenger;state.passengers.has(id)?state.passengers.delete(id):state.passengers.add(id);btn.classList.toggle("active",state.passengers.has(id))}
 window.updateSafetyReady=function(){
   const checks=[...document.querySelectorAll(".safety-check")];
-  const ready=checks.length>0&&checks.every(x=>x.checked);
+  const safetyReady=checks.length>0&&checks.every(x=>x.checked);
+  const driver=document.getElementById("driver")?.value||"";
+  const purpose=document.getElementById("purpose")?.value||"";
+  const destination=document.getElementById("destination")?.value.trim()||"";
+  const startRaw=document.getElementById("startKm")?.value;
+  const startKm=Number(startRaw);
+  const formReady=Boolean(driver&&purpose&&destination&&startRaw!==""&&Number.isFinite(startKm));
   const btn=document.getElementById("startTripButton");
-  if(btn){
-    btn.disabled=!ready;
-    btn.textContent=ready?"운행 시작하기":"체크 완료 후 운행 시작";
-  }
+  if(!btn)return;
+  btn.disabled=!(safetyReady&&formReady);
+  if(!safetyReady)btn.textContent="안전 체크를 완료해주세요";
+  else if(!formReady)btn.textContent="운행 정보를 입력해주세요";
+  else btn.textContent="운행 시작하기";
 }
 window.startTrip=async function(){
   const checks=[...document.querySelectorAll(".safety-check")];
