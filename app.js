@@ -44,7 +44,8 @@ function renderStart(v){
     <div class="field"><span>동승자 <em>선택</em></span><div class="multi">${chips||'<span class="field-help">등록된 동승자가 없습니다.</span>'}</div></div>
     <label class="field"><span>운행목적</span><select id="purpose" class="select"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
     <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정"></label>
-    <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="0" step="0.1" inputmode="decimal" placeholder="예: 42351"></label>
+    <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="${state.data.lastOdometer?.[v.id]??""}" placeholder="예: 42351"></label>
+    ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 필요하면 더 큰 값으로 수정하세요.</p>`:""}
     <button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>체크 완료 후 운행 시작</button>
   </div>`,state.data.facility.name);
 }
