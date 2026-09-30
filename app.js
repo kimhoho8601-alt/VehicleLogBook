@@ -13,7 +13,7 @@ const fmtTime=v=>v?new Date(v).toLocaleTimeString("ko-KR",{hour:"2-digit",minute
 const fmtDate=v=>v?new Date(v).toLocaleDateString("ko-KR"):"";
 
 function userShell(body,title="차량 운행일지 등록"){
-  app.innerHTML=`<main class="shell"><header class="staff-topbar"><strong>차량 운행일지 등록</strong></header>${body}<footer class="app-footer">안전한 이동, 정확한 기록</footer></main>`
+  app.innerHTML=`<main class="shell staff-shell"><header class="staff-topbar"><strong>차량 운행일지 등록</strong></header>${body}<footer class="staff-brand-footer"><img src="./assets/save-the-children-logo.png" alt="Save the Children"></footer></main>`
 }
 async function loadPublic(){if(!state.facilityCode){return renderAdmin()}
 try{const d=await api({action:"bootstrap"});state.data=d;renderVehicles()}catch(e){userShell(`<div class="empty">${esc(e.message)}</div>`,"연결 오류")}}
@@ -22,16 +22,34 @@ function renderVehicles(){
   const d=state.data;
   const cards=d.vehicles.map(v=>{
     const a=d.active?.[v.id];
-    return `<button class="vehicle-card" onclick="selectVehicle('${v.id}')"><div class="vehicle-main"><span class="vehicle-dot"></span><div><div class="plate">${esc(v.plate_number)}</div><div class="label">${esc(v.label||d.facility.name)}</div>${a?`<div class="live-meta">${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</div>`:""}</div></div><span class="status-chip ${a?"live":"ok"}">${a?"운행 중":"운행 가능"}</span></button>`;
+    const statusText=a?`${esc(a.driver_name||"운전자")} 운전 중`:"운행 가능";
+    return `<button class="vehicle-card ${a?"is-live":""}" onclick="selectVehicle('${v.id}')">
+      <div class="vehicle-main">
+        <span class="vehicle-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 11.5 6.7 7h10.6l1.7 4.5M4 12.5h16v5H4v-5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 17.5v1.5M17 17.5v1.5M7.2 14.7h.01M16.8 14.7h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <div class="vehicle-copy">
+          <div class="plate">${esc(v.plate_number)}</div>
+          <div class="label">${esc(v.label||d.facility.name)}</div>
+          ${a?`<div class="live-meta"><span class="live-dot"></span>${fmtTime(a.start_at)} 출발</div>`:""}
+        </div>
+      </div>
+      <div class="vehicle-card-side"><span class="status-chip ${a?"live":"ok"}">${statusText}</span><span class="vehicle-chevron" aria-hidden="true">›</span></div>
+    </button>`;
   }).join("");
-  userShell(`<section class="hero vehicle-hero staff-home-hero"><h1>${esc(d.facility.name)}</h1><p>운행할 차량을 선택해주세요.</p></section><section class="section-head staff-section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section><section class="grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
+  userShell(`<section class="hero vehicle-hero staff-home-hero">
+    <div class="facility-accent" aria-hidden="true"></div>
+    <h1>${esc(d.facility.name)}</h1>
+    <p>운행할 차량을 선택해주세요.</p>
+  </section>
+  <section class="section-head staff-section-head"><div><span>차량 선택</span><strong>운행할 차량을 골라주세요</strong></div></section>
+  <section class="grid vehicle-grid">${cards||'<div class="empty">등록된 차량이 없습니다.</div>'}</section>`,d.facility.name);
 }
 
 window.selectVehicle=function(id){state.selectedVehicle=id;state.passengers.clear();const v=state.data.vehicles.find(x=>x.id===id);const a=state.data.active?.[id];if(a)return renderEnd(v,a);renderStart(v)}
 function renderStart(v){
-  const members=state.data.members.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
+  const sortedMembers=[...(state.data.members||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ko"));
+  const members=sortedMembers.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   const purposes=state.data.purposes.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
-  const chips=state.data.members.map(m=>`<button type="button" class="choice" data-passenger="${m.id}" onclick="togglePassenger(this)">${esc(m.name)}</button>`).join("");
+  const passengerOptions=sortedMembers.map(m=>`<label class="staff-passenger-option"><input type="checkbox" value="${m.id}" onchange="togglePassengerDropdown(this)"><span>${esc(m.name)}</span></label>`).join("");
   userShell(`<button class="back mobile-back" onclick="renderVehicles()">← 차량 다시 선택</button>
   <section class="selected-vehicle-card"><div><span>선택 차량</span><strong>${esc(v.plate_number)}</strong><small>${esc(v.label||state.data.facility.name)}</small></div><span class="status-chip ok">운행 가능</span></section>
   <section class="safety-check-card"><div class="safety-check-title"><span class="safety-number">20</span><div><strong>출발 전 20초 안전확인</strong><p>차량을 움직이기 전에 아래 3가지만 확인해주세요.</p></div></div>
@@ -41,7 +59,16 @@ function renderStart(v){
   </section>
   <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 정보</span><h2>출발 기록 입력</h2></div><span class="required-note">필수 입력</span></div>
     <label class="field"><span>운행자</span><select id="driver" class="select" onchange="updateSafetyReady()"><option value="">운행자를 선택하세요</option>${members}</select></label>
-    <div class="field"><span>동승자 <em>선택</em></span><div class="multi">${chips||'<span class="field-help">등록된 동승자가 없습니다.</span>'}</div></div>
+    <div class="field"><span>동승자 <em>선택</em></span>
+      <details class="staff-passenger-select" id="staffPassengerSelect">
+        <summary><span id="passengerSummary">동승자를 선택하세요</span><span class="staff-select-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="staff-passenger-menu">
+          <div class="staff-passenger-menu-head"><strong>동승자 선택</strong><button type="button" onclick="clearPassengerDropdown()">선택 해제</button></div>
+          <div class="staff-passenger-options">${passengerOptions||'<span class="field-help">등록된 직원이 없습니다.</span>'}</div>
+        </div>
+      </details>
+      <small class="field-help staff-sort-help">이름은 가나다순으로 정렬됩니다.</small>
+    </div>
     <label class="field"><span>운행목적</span><select id="purpose" class="select" onchange="updateSafetyReady()"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
     <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정" oninput="updateSafetyReady()"></label>
     <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="${state.data.lastOdometer?.[v.id]??""}" placeholder="예: 42351" oninput="updateSafetyReady()"></label>
@@ -50,7 +77,25 @@ function renderStart(v){
   <div class="start-action-bar"><button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>안전 체크를 완료해주세요</button></div>`,state.data.facility.name);
   updateSafetyReady();
 }
-window.togglePassenger=function(btn){const id=btn.dataset.passenger;state.passengers.has(id)?state.passengers.delete(id):state.passengers.add(id);btn.classList.toggle("active",state.passengers.has(id))}
+function updatePassengerSummary(){
+  const summary=document.getElementById("passengerSummary");
+  if(!summary)return;
+  const sortedMembers=[...(state.data?.members||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ko"));
+  const names=sortedMembers.filter(m=>state.passengers.has(m.id)).map(m=>m.name);
+  summary.textContent=names.length?names.join(", "):"동승자를 선택하세요";
+  summary.classList.toggle("has-selection",names.length>0);
+}
+window.togglePassengerDropdown=function(input){
+  const id=input.value;
+  if(input.checked)state.passengers.add(id);
+  else state.passengers.delete(id);
+  updatePassengerSummary();
+}
+window.clearPassengerDropdown=function(){
+  state.passengers.clear();
+  document.querySelectorAll('#staffPassengerSelect input[type="checkbox"]').forEach(input=>input.checked=false);
+  updatePassengerSummary();
+}
 window.updateSafetyReady=function(){
   const checks=[...document.querySelectorAll(".safety-check")];
   const safetyReady=checks.length>0&&checks.every(x=>x.checked);
