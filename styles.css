@@ -558,3 +558,54 @@ h1,h2,h3,p{word-break:keep-all}
     width:100%;
   }
 }
+
+/* 관리자 입력행 정렬 보정 */
+.global-add-form{
+  align-items:stretch;
+}
+.global-add-form > .input,
+.global-add-form > .select,
+.global-add-form > .btn{
+  min-height:52px;
+}
+.global-add-form > .btn.primary{
+  margin:0;
+  padding:0 20px;
+  align-self:stretch;
+}
+.global-member-add{
+  grid-template-columns:minmax(210px,.9fr) minmax(260px,1.2fr) 96px auto auto;
+  align-items:stretch;
+}
+.global-member-add > .select,
+.global-member-add > .input,
+.global-member-add > .btn{
+  height:52px;
+  min-height:52px;
+}
+.global-member-add .bulk-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 14px!important;
+}
+@media(max-width:1100px){
+  .global-member-add{
+    grid-template-columns:1fr 1fr 96px;
+  }
+  .global-member-add .bulk-btn{
+    grid-column:span 1;
+    width:100%!important;
+  }
+}
+@media(max-width:720px){
+  .global-member-add{
+    grid-template-columns:1fr;
+  }
+  .global-member-add > .select,
+  .global-member-add > .input,
+  .global-member-add > .btn{
+    grid-column:1!important;
+    width:100%!important;
+  }
+}
