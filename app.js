@@ -249,7 +249,7 @@ async function renderAdminHome(){
   if(state.adminTab==="dashboard")return renderDashboard();
   if(state.adminTab==="vehicles")return state.admin.profile.role==="superadmin"?renderGlobalManager("vehicles"):renderManager("vehicles","차량 관리","plate_number","차량번호");
   if(state.adminTab==="members")return state.admin.profile.role==="superadmin"?renderGlobalManager("members"):renderManager("facility_members","직원 관리","name","직원명");
-  if(state.adminTab==="purposes")return state.admin.profile.role==="superadmin"?renderGlobalManager("purposes"):renderManager("trip_purposes","운행목적 관리","name","운행목적");
+  if(state.adminTab==="purposes")return state.admin.profile.role==="superadmin"?renderGlobalManager("purposes"):renderPurposeReadOnly();
   if(state.adminTab==="report")return renderReport();
   if(state.adminTab==="accounts"&&state.admin.profile.role==="superadmin")return renderAccountRegistration();
   state.adminTab="dashboard";
@@ -306,6 +306,11 @@ async function renderGlobalManager(type){
     const memberBulk=type==="members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(true)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(true)">양식으로 첨부하기</button>`:"";
     adminFrame(`<section class="card"><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p><div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="4">등록된 데이터가 없습니다.</td></tr>'}</tbody></table></div></section>`);
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
+}
+
+function renderPurposeReadOnly(){
+  const rows=state.admin.purposes||[];
+  adminFrame(`<section class="card"><h2>운행목적</h2><p>운행목적 코드는 시스템 관리자(MASTER)에서 공통 관리합니다. 시설 관리자는 현재 적용 중인 항목을 조회만 할 수 있습니다.</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r.name)}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><span class="status-chip ok">공통 코드</span></div>`).join("")||'<div class="empty">등록된 운행목적이 없습니다. 시스템 관리자에게 문의해주세요.</div>'}</div></section>`);
 }
 
 function managerData(table){
