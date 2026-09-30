@@ -702,3 +702,34 @@ h1,h2,h3,p{word-break:keep-all}
   .passenger-menu{position:fixed;left:14px;right:14px;top:auto;bottom:18px;max-width:none;min-width:0}
   .passenger-options{max-height:40vh}
 }
+
+.row-select-head,.row-select-cell{width:44px;min-width:44px;text-align:center!important}
+.row-select-check,#selectAllReportRows{width:16px;height:16px;accent-color:var(--red);cursor:pointer}
+.editor-row-tools{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 18px 0;
+}
+.editor-row-tools-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.editor-row-tools .icon-btn{min-height:36px;padding:8px 12px}
+.editor-row-tools .icon-btn:disabled{opacity:.45;cursor:not-allowed}
+.editor-row-tools>span{font-size:11px;font-weight:800;color:var(--muted);white-space:nowrap}
+.new-row td{background:#fff9fa!important}
+.new-row td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.editor-bottom-status{display:flex;align-items:center;gap:7px;min-width:0}
+.editor-bottom-divider{color:#c0b4b7}
+.editor-bottom-actions{display:flex;align-items:center;gap:8px}
+.editor-bottom-actions .btn{width:auto;margin:0}
+.add-row-btn{color:var(--red);border-color:#efcbd4;background:#fff8fa}
+.report-empty-row td{text-align:center!important;color:var(--muted);padding:26px 12px!important}
+@media(max-width:720px){
+  .editor-row-tools{align-items:flex-start;flex-direction:column;padding:10px 12px 0}
+  .editor-row-tools-left{width:100%}
+  .editor-row-tools-left .icon-btn{flex:1}
+  .editor-bottom{align-items:flex-start;flex-direction:column}
+  .editor-bottom-actions{width:100%}
+  .editor-bottom-actions .btn{flex:1}
+  .editor-bottom-status{font-size:11px}
+}
