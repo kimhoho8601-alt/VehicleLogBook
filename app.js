@@ -301,7 +301,7 @@ async function renderDashboard(){
     return;
   }
 
-  const active=await restRequest("trips?select=id,vehicle_id,driver_id,start_at,destination&facility_id="+eq(state.admin.facility.id)+"&status=eq.active&order=start_at.asc");
+  const active=await restRequest("trips?select=id,vehicle_id,driver_id,start_at,destination&facility_id="+eq(state.admin.facility.id)+"&status=eq.active&order=admin_sort_order.asc.nullslast,start_at.asc");
   const vm=Object.fromEntries(state.admin.vehicles.map(x=>[x.id,x.plate_number]));
   const mm=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
   adminFrame(`<section class="stats"><div class="stat"><span>등록 차량</span><strong>${state.admin.vehicles.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>등록 직원</span><strong>${state.admin.members.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>현재 운행 중</span><strong>${(active||[]).length}</strong></div></section><section class="card"><h2>현재 운행</h2><p>직원 화면의 운행 상태와 실시간으로 동일하게 반영됩니다.</p><div>${(active||[]).map(x=>`<div class="trip-row"><strong>${esc(vm[x.vehicle_id]||"차량")} · ${esc(mm[x.driver_id]||"운행자")}</strong><small>${fmtTime(x.start_at)} 출발 · ${esc(x.destination||"")}</small></div>`).join("")||'<div class="empty" style="margin-top:14px">현재 운행 중인 차량이 없습니다.</div>'}</div></section>`);
@@ -679,7 +679,7 @@ async function loadReportEditData(month,vehicleId){
   const start=month+"-01T00:00:00+09:00";
   const endDate=new Date(month+"-01T00:00:00+09:00");
   endDate.setMonth(endDate.getMonth()+1);
-  const trips=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=start_at.asc");
+  const trips=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=admin_sort_order.asc.nullslast,start_at.asc");
   return {
     month,
     vehicleId,
@@ -722,7 +722,9 @@ function reportRowHtml(r,i,data){
   const dateValue=r.start_at?seoulDateInput(r.start_at):(r.date||"");
   const startValue=r.start_at?seoulTimeInput(r.start_at):(r.startTime||"");
   const endValue=r.end_at?seoulTimeInput(r.end_at):(r.endTime||"");
-  return `<tr class="edit-trip-row${isNew?" changed new-row":""}" data-trip-id="${r.id}" data-new="${isNew?"1":"0"}" data-index="${i}">
+  const sortOrder=Number(r.admin_sort_order)||i+1;
+  return `<tr class="edit-trip-row${isNew?" changed new-row":""}" draggable="true" data-trip-id="${r.id}" data-new="${isNew?"1":"0"}" data-index="${i}" data-sort-order="${sortOrder}" ondragstart="reportDragStart(event)" ondragover="reportDragOver(event)" ondrop="reportDrop(event)" ondragend="reportDragEnd(event)">
+    <td class="row-drag-cell"><span class="drag-handle" title="드래그해서 순서 이동" aria-label="드래그해서 순서 이동">⋮⋮</span></td>
     <td class="row-select-cell"><input class="row-select-check" type="checkbox" aria-label="행 선택" onchange="updateReportSelection()"></td>
     <td><input class="cell-input edit-date" type="date" value="${dateValue}" onchange="markReportRowChanged(this)"></td>
     <td><select class="cell-select edit-driver" onchange="markReportRowChanged(this)"><option value="">선택</option>${memberOptions(data.members,r.driver_id)}</select></td>
@@ -742,7 +744,7 @@ function reportEditorMarkup(data,{saved=false}={}){
   const rows=data.trips.map((r,i)=>reportRowHtml(r,i,data)).join("");
   return `<section class="card report-editor-card">
     <div class="editor-head"><div><button class="back-link" onclick="renderReport()">← 월간 운행일지</button><h2>웹에서 편집하기</h2><p>${esc(data.facility?.name||"")} · ${esc(data.vehicle?.plate_number||"")} · ${esc(data.month||state.reportEdit?.month||"")}</p></div><div class="editor-actions"><button class="btn light" onclick="renderReport()">닫기</button><button id="saveReportEditsButton" class="btn primary" onclick="saveReportEdits()">변경사항 저장</button></div></div>
-    <div class="edit-guide ${saved?"saved":""}"><strong>${saved?"저장 완료":"수정 안내"}</strong><span>${saved?"최신 데이터로 다시 불러왔습니다.":"체크박스로 행을 선택해 삭제할 수 있고, 행 추가로 누락된 기록을 직접 입력할 수 있습니다. 수정한 행은 연한 빨간색으로 표시됩니다."}</span></div>
+    <div class="edit-guide ${saved?"saved":""}"><strong>${saved?"저장 완료":"수정 안내"}</strong><span>${saved?"최신 데이터로 다시 불러왔습니다.":"왼쪽 이동 손잡이를 드래그해 순서를 바꿀 수 있습니다. 체크박스로 행을 선택해 삭제하거나 ‘행 추가’로 누락된 기록을 입력할 수 있습니다."}</span></div>
     <div class="editor-row-tools">
       <div class="editor-row-tools-left">
         <button type="button" class="icon-btn add-row-btn" onclick="addReportRow()">＋ 행 추가</button>
@@ -750,7 +752,7 @@ function reportEditorMarkup(data,{saved=false}={}){
       </div>
       <span id="selectionCountLabel">선택된 행 없음</span>
     </div>
-    <div class="table-scroll report-edit-scroll"><table class="admin-table report-edit-table"><thead><tr><th class="row-select-head"><input id="selectAllReportRows" type="checkbox" aria-label="전체 선택" onchange="toggleAllReportRows(this)"></th><th>날짜</th><th>운전자</th><th>동행자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>출발km</th><th>도착km</th><th>운행거리</th><th>비고</th></tr></thead><tbody id="reportEditBody">${rows||'<tr class="report-empty-row"><td colspan="12">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>'}</tbody></table></div>
+    <div class="table-scroll report-edit-scroll"><table class="admin-table report-edit-table"><thead><tr><th class="row-drag-head"></th><th class="row-select-head"><input id="selectAllReportRows" type="checkbox" aria-label="전체 선택" onchange="toggleAllReportRows(this)"></th><th>날짜</th><th>운전자</th><th>동행자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>출발km</th><th>도착km</th><th>운행거리</th><th>비고</th></tr></thead><tbody id="reportEditBody">${rows||'<tr class="report-empty-row"><td colspan="13">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>'}</tbody></table></div>
     <div class="editor-bottom"><div class="editor-bottom-status"><span id="editCountLabel">변경된 기록 없음</span><span class="editor-bottom-divider">·</span><span id="bottomSelectionCount">선택된 행 없음</span></div><div class="editor-bottom-actions"><button type="button" class="btn light" onclick="addReportRow()">＋ 행 추가</button><button class="btn primary" onclick="saveReportEdits()">변경사항 저장</button></div></div>
   </section>`;
 }
@@ -820,6 +822,50 @@ window.toggleAllReportRows=function(master){
   updateReportEditStatus();
 }
 
+let draggedReportRow=null;
+window.reportDragStart=function(event){
+  const row=event.currentTarget;
+  if(event.target?.closest("input,select,button,details,summary,label")){
+    event.preventDefault();
+    return;
+  }
+  draggedReportRow=row;
+  row.classList.add("dragging");
+  if(event.dataTransfer){
+    event.dataTransfer.effectAllowed="move";
+    event.dataTransfer.setData("text/plain",row.dataset.tripId||"");
+  }
+}
+window.reportDragOver=function(event){
+  if(!draggedReportRow)return;
+  event.preventDefault();
+  const target=event.currentTarget;
+  if(target===draggedReportRow)return;
+  const rect=target.getBoundingClientRect();
+  const after=event.clientY>rect.top+rect.height/2;
+  target.parentNode.insertBefore(draggedReportRow,after?target.nextSibling:target);
+}
+window.reportDrop=function(event){
+  if(!draggedReportRow)return;
+  event.preventDefault();
+  markReportOrderChanged();
+}
+window.reportDragEnd=function(){
+  if(draggedReportRow)draggedReportRow.classList.remove("dragging");
+  draggedReportRow=null;
+}
+function markReportOrderChanged(){
+  const rows=[...document.querySelectorAll(".edit-trip-row")];
+  rows.forEach((row,index)=>{
+    const next=index+1;
+    if(Number(row.dataset.sortOrder)!==next){
+      row.dataset.sortOrder=String(next);
+      row.classList.add("changed","reordered");
+    }
+  });
+  updateReportEditStatus();
+}
+
 window.updateReportDistance=function(el){
   const row=el.closest(".edit-trip-row");
   if(!row)return;
@@ -853,7 +899,8 @@ window.addReportRow=function(){
     start_odometer:previousEnd,
     end_odometer:"",
     distance:null,
-    note:""
+    note:"",
+    admin_sort_order:existing.length+1
   };
   const wrapper=document.createElement("tbody");
   wrapper.innerHTML=reportRowHtml(temp,existing.length,state.reportEdit);
@@ -861,14 +908,13 @@ window.addReportRow=function(){
   body.appendChild(row);
   row.scrollIntoView({behavior:"smooth",block:"nearest"});
   row.querySelector(".edit-driver")?.focus();
-  updateReportEditStatus();
+  markReportOrderChanged();
 }
 
 window.deleteSelectedReportRows=async function(){
   const rows=[...document.querySelectorAll(".edit-trip-row")].filter(row=>row.querySelector(".row-select-check")?.checked);
   if(!rows.length)return toast("삭제할 행을 선택해주세요.");
   const existingRows=rows.filter(row=>row.dataset.new!=="1");
-  const newRows=rows.filter(row=>row.dataset.new==="1");
   const message=existingRows.length
     ? "선택한 "+rows.length+"건을 삭제할까요? 저장된 운행기록 "+existingRows.length+"건은 즉시 삭제됩니다."
     : "선택한 "+rows.length+"개의 새 행을 삭제할까요?";
@@ -882,15 +928,15 @@ window.deleteSelectedReportRows=async function(){
     if(existingRows.length){
       await openReportEditorFromState();
     }else{
-      updateReportEditStatus();
+      markReportOrderChanged();
       const body=document.getElementById("reportEditBody");
-      if(body&&!body.querySelector(".edit-trip-row"))body.innerHTML='<tr class="report-empty-row"><td colspan="12">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>';
+      if(body&&!body.querySelector(".edit-trip-row"))body.innerHTML='<tr class="report-empty-row"><td colspan="13">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>';
     }
   }catch(error){toast(error.message||"선택한 기록을 삭제하지 못했습니다.")}
 }
 
 function collectReportRows(){
-  return [...document.querySelectorAll(".edit-trip-row")].map(row=>{
+  return [...document.querySelectorAll(".edit-trip-row")].map((row,index)=>{
     const selectedPassengers=[...row.querySelectorAll('.passenger-picker input[type="checkbox"]:checked')].map(o=>o.value);
     const date=row.querySelector(".edit-date").value;
     const startTime=row.querySelector(".edit-start-time").value;
@@ -903,6 +949,7 @@ function collectReportRows(){
       id:row.dataset.tripId,
       isNew:row.dataset.new==="1",
       changed:row.classList.contains("changed"),
+      sortOrder:index+1,
       date,startTime,endTime,startKm,endKm,
       driver_id:row.querySelector(".edit-driver").value,
       passenger_ids:selectedPassengers,
@@ -922,9 +969,9 @@ function validateReportRows(rows){
     if(r.endKm<r.startKm)return "도착 키로수는 출발 키로수보다 작을 수 없습니다.";
     if(new Date(r.end_at)<new Date(r.start_at))return "도착시간은 출발시간보다 빠를 수 없습니다.";
   }
-  const sorted=[...rows].sort((a,b)=>new Date(a.start_at)-new Date(b.start_at));
-  for(let i=1;i<sorted.length;i++){
-    const prev=sorted[i-1],cur=sorted[i];
+  const chronological=[...rows].sort((a,b)=>new Date(a.start_at)-new Date(b.start_at));
+  for(let i=1;i<chronological.length;i++){
+    const prev=chronological[i-1],cur=chronological[i];
     if(cur.startKm<prev.endKm)return `${cur.date} 기록의 출발 키로수가 이전 운행의 도착 키로수보다 작습니다.`;
   }
   return "";
@@ -938,7 +985,9 @@ window.saveReportEdits=async function(){
   const buttons=[...document.querySelectorAll('[onclick="saveReportEdits()"]')];
   buttons.forEach(button=>{button.disabled=true;button.dataset.label=button.textContent;button.textContent="저장 중...";});
   try{
-    for(const r of changed){
+    const orderWasChanged=Boolean(document.querySelector(".edit-trip-row.reordered"));
+    const targets=orderWasChanged?rows:changed;
+    for(const r of targets){
       const payload={
         driver_id:r.driver_id,
         passenger_ids:r.passenger_ids,
@@ -952,7 +1001,8 @@ window.saveReportEdits=async function(){
         status:"ended",
         note:r.note||null,
         admin_edited_at:new Date().toISOString(),
-        admin_edited_by:state.admin.profile.id
+        admin_edited_by:state.admin.profile.id,
+        admin_sort_order:r.sortOrder
       };
       if(r.isNew){
         payload.facility_id=state.reportEdit.facility.id;
@@ -1062,7 +1112,7 @@ window.downloadReport=async function(){
     }else{
       const start=month+"-01T00:00:00+09:00";
       const endDate=new Date(month+"-01T00:00:00+09:00");endDate.setMonth(endDate.getMonth()+1);
-      rows=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=start_at.asc");
+      rows=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=admin_sort_order.asc.nullslast,start_at.asc");
       members=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
       purposes=Object.fromEntries(state.admin.purposes.map(x=>[x.id,x.name]));
       vehicle=state.admin.vehicles.find(x=>x.id===vehicleId);
