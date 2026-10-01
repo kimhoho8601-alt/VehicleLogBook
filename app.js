@@ -756,20 +756,32 @@ async function renderMaintenanceHistory(){
 
     const facilityMap=Object.fromEntries(facilities.map(f=>[f.id,f]));
     const vehicleMap=Object.fromEntries(vehicles.map(v=>[v.id,v]));
-    const vehicleOptions=vehicles
+    const sortedVehicles=vehicles
       .slice()
       .sort((a,b)=>{
         const af=facilityMap[a.facility_id]?.name||"";
         const bf=facilityMap[b.facility_id]?.name||"";
         return af.localeCompare(bf,"ko")||String(a.plate_number||"").localeCompare(String(b.plate_number||""),"ko");
-      })
-      .map(v=>{
-        const prefix=isMaster?(facilityMap[v.facility_id]?.name||"시설")+" · ":"";
-        return `<option value="${v.id}">${esc(prefix+(v.plate_number||"차량"))}</option>`;
-      }).join("");
+      });
+    const vehicleOptions=sortedVehicles.map(v=>{
+      const prefix=isMaster?(facilityMap[v.facility_id]?.name||"시설")+" · ":"";
+      return `<option value="${v.id}">${esc(prefix+(v.plate_number||"차량"))}</option>`;
+    }).join("");
 
-    const rows=(await restRequest("vehicle_maintenance?select=*&order=maintenance_date.desc,created_at.desc"))||[];
+    const allRows=(await restRequest("vehicle_maintenance?select=*&order=maintenance_date.desc,created_at.desc"))||[];
+    const filterVehicleId=state.maintenanceFilterVehicle||"";
+    const rows=filterVehicleId?allRows.filter(r=>r.vehicle_id===filterVehicleId):allRows;
     const totalCost=rows.reduce((sum,r)=>sum+Number(r.cost||0),0);
+    const selectedVehicle=filterVehicleId?vehicleMap[filterVehicleId]:null;
+    const scopeLabel=selectedVehicle
+      ?(isMaster?(facilityMap[selectedVehicle.facility_id]?.name||"시설")+" · ":"")+(selectedVehicle.plate_number||"차량")
+      :"전체 차량";
+
+    const filterOptions=sortedVehicles.map(v=>{
+      const prefix=isMaster?(facilityMap[v.facility_id]?.name||"시설")+" · ":"";
+      return `<option value="${v.id}" ${v.id===filterVehicleId?"selected":""}>${esc(prefix+(v.plate_number||"차량"))}</option>`;
+    }).join("");
+
     const list=rows.map(r=>{
       const vehicle=vehicleMap[r.vehicle_id]||{};
       const facility=facilityMap[r.facility_id]||{};
@@ -784,11 +796,14 @@ async function renderMaintenanceHistory(){
       </tr>`;
     }).join("");
 
+    state.maintenanceExportData={rows,allRows,vehicles,facilities,filterVehicleId,isMaster};
+
     adminFrame(`<section class="card maintenance-card">
       <div class="maintenance-head">
-        <div><h2>차량 정비 이력</h2><p>차량별 수리·정비 내역과 비용을 기록합니다. 최근 기록부터 표시됩니다.</p></div>
-        <div class="maintenance-total"><span>등록된 정비비</span><strong>${totalCost.toLocaleString()}원</strong></div>
+        <div><h2>차량 정비 이력</h2><p>차량별 수리·정비 내역과 비용을 기록하고, 전체 또는 차량별로 조회할 수 있습니다.</p></div>
+        <div class="maintenance-total"><span>${filterVehicleId?"선택 차량 정비비":"전체 정비비"}</span><strong>${totalCost.toLocaleString()}원</strong></div>
       </div>
+
       <div class="maintenance-form">
         <label class="field"><span>차량 번호</span><select id="maintenanceVehicle" class="select"><option value="">차량 선택</option>${vehicleOptions}</select></label>
         <label class="field"><span>정비일</span><input id="maintenanceDate" class="input" type="date" value="${currentKstDate()}"></label>
@@ -797,10 +812,26 @@ async function renderMaintenanceHistory(){
         <label class="field maintenance-note-field"><span>비고 <em>선택</em></span><input id="maintenanceNote" class="input" placeholder="예: 정비소 / 다음 점검 시점"></label>
         <button class="btn primary maintenance-add-btn" onclick="addMaintenance()">정비 이력 등록</button>
       </div>
+
+      <div class="maintenance-list-toolbar">
+        <div class="maintenance-filter-copy">
+          <span>정비내역 조회</span>
+          <strong>${esc(scopeLabel)}</strong>
+          <small>${rows.length.toLocaleString()}건</small>
+        </div>
+        <div class="maintenance-filter-actions">
+          <select id="maintenanceFilterVehicle" class="select maintenance-filter-select" onchange="setMaintenanceFilter(this.value)">
+            <option value="">전체 차량</option>
+            ${filterOptions}
+          </select>
+          <button class="btn dark maintenance-excel-btn" onclick="downloadMaintenanceExcel()">Excel 다운로드</button>
+        </div>
+      </div>
+
       <div class="table-scroll">
         <table class="admin-table maintenance-table">
           <thead><tr>${isMaster?"<th>시설</th>":""}<th>차량</th><th>정비일</th><th>수리·정비 항목</th><th>비용</th><th>비고</th><th>관리</th></tr></thead>
-          <tbody>${list||`<tr><td colspan="${isMaster?7:6}">등록된 정비 이력이 없습니다.</td></tr>`}</tbody>
+          <tbody>${list||`<tr><td colspan="${isMaster?7:6}">해당 조건의 정비 이력이 없습니다.</td></tr>`}</tbody>
         </table>
       </div>
     </section>`);
@@ -808,6 +839,93 @@ async function renderMaintenanceHistory(){
     adminFrame('<div class="empty">'+esc(error.message||"정비 이력을 불러오지 못했습니다.")+'</div>');
   }
 }
+
+window.setMaintenanceFilter=function(vehicleId){
+  state.maintenanceFilterVehicle=vehicleId||"";
+  renderMaintenanceHistory();
+}
+
+function buildMaintenanceXlsx(rows,vehicleMap,facilityMap,{isMaster=false,scopeLabel="전체 차량",totalCost=0}={}){
+  const headers=isMaster
+    ?["시설","차량","정비일","수리·정비 항목","비용(원)","비고"]
+    :["차량","정비일","수리·정비 항목","비용(원)","비고"];
+  const lastCol=xlsxCol(headers.length);
+  const sheetRows=[];
+  const add=(n,cells,h)=>sheetRows.push(`<row r="${n}"${h?` ht="${h}" customHeight="1"`:""}>${cells.join("")}</row>`);
+
+  add(1,[xlsxText("A1","차량 정비 이력",1)],32);
+  add(2,[xlsxText("A2","조회 범위",2),xlsxText("B2",scopeLabel,3)],24);
+  add(3,[xlsxText("A3","정비비 합계",2),xlsxNum("B3",totalCost,3)],24);
+  add(4,[],8);
+  add(5,headers.map((h,i)=>xlsxText(xlsxCol(i+1)+"5",h,2)),25);
+
+  const bodyCount=Math.max(20,rows.length);
+  for(let i=0;i<bodyCount;i++){
+    const n=6+i;
+    const r=rows[i];
+    if(!r){
+      add(n,headers.map((_,j)=>xlsxText(xlsxCol(j+1)+n,"",3)),22);
+      continue;
+    }
+    const vehicle=vehicleMap[r.vehicle_id]||{};
+    const facility=facilityMap[r.facility_id]||{};
+    const values=isMaster
+      ?[facility.name||"",vehicle.plate_number||"",r.maintenance_date||"",r.item||"",Number(r.cost||0),r.note||""]
+      :[vehicle.plate_number||"",r.maintenance_date||"",r.item||"",Number(r.cost||0),r.note||""];
+    const cells=values.map((value,j)=>{
+      const ref=xlsxCol(j+1)+n;
+      const costIndex=isMaster?4:3;
+      return j===costIndex?xlsxNum(ref,value,3):xlsxText(ref,value,3);
+    });
+    add(n,cells,22);
+  }
+
+  let cols="";
+  for(let i=1;i<=headers.length;i++){
+    const width=isMaster
+      ?[24,15,14,28,15,30][i-1]
+      :[15,14,28,15,34][i-1];
+    cols+=`<col min="${i}" max="${i}" width="${width}" customWidth="1"/>`;
+  }
+
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols>${cols}</cols><sheetData>${sheetRows.join("")}</sheetData><autoFilter ref="A5:${lastCol}${5+bodyCount}"/><mergeCells count="1"><mergeCell ref="A1:${lastCol}1"/></mergeCells><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="18"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><name val="Malgun Gothic"/></font><font><sz val="10"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf fontId="2" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+  return zipStore([
+    {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`},
+    {name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`},
+    {name:"xl/workbook.xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="정비이력" sheetId="1" r:id="rId1"/></sheets><calcPr calcId="191029"/></workbook>`},
+    {name:"xl/_rels/workbook.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:"xl/styles.xml",data:styles},
+    {name:"xl/worksheets/sheet1.xml",data:sheet}
+  ]);
+}
+
+window.downloadMaintenanceExcel=function(){
+  const data=state.maintenanceExportData;
+  if(!data)return toast("정비 이력을 먼저 불러와주세요.");
+  const vehicleMap=Object.fromEntries((data.vehicles||[]).map(v=>[v.id,v]));
+  const facilityMap=Object.fromEntries((data.facilities||[]).map(f=>[f.id,f]));
+  const selectedVehicle=data.filterVehicleId?vehicleMap[data.filterVehicleId]:null;
+  const scopeLabel=selectedVehicle
+    ?(data.isMaster?(facilityMap[selectedVehicle.facility_id]?.name||"시설")+" · ":"")+(selectedVehicle.plate_number||"차량")
+    :"전체 차량";
+  const totalCost=(data.rows||[]).reduce((sum,r)=>sum+Number(r.cost||0),0);
+  const bytes=buildMaintenanceXlsx(data.rows||[],vehicleMap,facilityMap,{
+    isMaster:data.isMaster,
+    scopeLabel,
+    totalCost
+  });
+  const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  const safeScope=String(scopeLabel||"전체").replace(/[\\/:*?"<>|]/g,"_");
+  a.download="차량정비이력_"+safeScope+".xlsx";
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+  toast("정비 이력 Excel을 다운로드했습니다.");
+}
+
 
 window.addMaintenance=async function(){
   const vehicleId=document.getElementById("maintenanceVehicle")?.value;
