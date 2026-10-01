@@ -63,7 +63,7 @@ function renderStart(v){
       <details class="staff-passenger-select" id="staffPassengerSelect">
         <summary><span id="passengerSummary">동승자를 선택하세요</span><span class="staff-select-chevron" aria-hidden="true">⌄</span></summary>
         <div class="staff-passenger-menu">
-          <div class="staff-passenger-menu-head"><strong>동승자 선택</strong><button type="button" onclick="clearPassengerDropdown()">선택 해제</button></div>
+          <div class="staff-passenger-menu-head"><strong>동승자 선택</strong><div class="staff-passenger-menu-actions"><button class="passenger-clear-btn" type="button" onclick="clearPassengerDropdown()">선택 해제</button><button id="passengerDoneButton" class="passenger-done-btn" type="button" onclick="finishPassengerDropdown()">선택 완료</button></div></div>
           <div class="staff-passenger-options">${passengerOptions||'<span class="field-help">등록된 직원이 없습니다.</span>'}</div>
         </div>
       </details>
@@ -84,6 +84,8 @@ function updatePassengerSummary(){
   const names=sortedMembers.filter(m=>state.passengers.has(m.id)).map(m=>m.name);
   summary.textContent=names.length?names.join(", "):"동승자를 선택하세요";
   summary.classList.toggle("has-selection",names.length>0);
+  const done=document.getElementById("passengerDoneButton");
+  if(done)done.textContent=names.length?("선택 완료 ("+names.length+")"):"선택 완료";
 }
 window.togglePassengerDropdown=function(input){
   const id=input.value;
@@ -95,6 +97,14 @@ window.clearPassengerDropdown=function(){
   state.passengers.clear();
   document.querySelectorAll('#staffPassengerSelect input[type="checkbox"]').forEach(input=>input.checked=false);
   updatePassengerSummary();
+}
+window.finishPassengerDropdown=function(){
+  const picker=document.getElementById("staffPassengerSelect");
+  updatePassengerSummary();
+  if(picker){
+    picker.open=false;
+    picker.querySelector("summary")?.focus();
+  }
 }
 window.updateSafetyReady=function(){
   const checks=[...document.querySelectorAll(".safety-check")];
@@ -1020,6 +1030,8 @@ window.toggleAllReportRows=function(master){
 }
 
 let draggedReportRow=null;
+let draggedReportOriginIndex=-1;
+let draggedReportFinalized=false;
 window.reportDragStart=function(event){
   const row=event.currentTarget;
   if(event.target?.closest("input,select,button,details,summary,label")){
@@ -1027,6 +1039,8 @@ window.reportDragStart=function(event){
     return;
   }
   draggedReportRow=row;
+  draggedReportOriginIndex=[...row.parentNode.querySelectorAll(".edit-trip-row")].indexOf(row);
+  draggedReportFinalized=false;
   row.classList.add("dragging");
   if(event.dataTransfer){
     event.dataTransfer.effectAllowed="move";
@@ -1045,21 +1059,27 @@ window.reportDragOver=function(event){
 window.reportDrop=function(event){
   if(!draggedReportRow)return;
   event.preventDefault();
-  markReportOrderChanged();
+  markReportOrderChanged(draggedReportRow,draggedReportOriginIndex);
+  draggedReportFinalized=true;
 }
 window.reportDragEnd=function(){
+  if(draggedReportRow&&!draggedReportFinalized){
+    markReportOrderChanged(draggedReportRow,draggedReportOriginIndex);
+  }
   if(draggedReportRow)draggedReportRow.classList.remove("dragging");
   draggedReportRow=null;
+  draggedReportOriginIndex=-1;
+  draggedReportFinalized=false;
 }
-function markReportOrderChanged(){
+function markReportOrderChanged(movedRow=null,originIndex=-1){
   const rows=[...document.querySelectorAll(".edit-trip-row")];
   rows.forEach((row,index)=>{
-    const next=index+1;
-    if(Number(row.dataset.sortOrder)!==next){
-      row.dataset.sortOrder=String(next);
-      row.classList.add("changed","reordered");
-    }
+    row.dataset.sortOrder=String(index+1);
   });
+  if(movedRow&&originIndex>=0){
+    const currentIndex=rows.indexOf(movedRow);
+    if(currentIndex!==originIndex)movedRow.classList.add("changed","reordered");
+  }
   updateReportEditStatus();
 }
 
