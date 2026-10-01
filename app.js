@@ -560,15 +560,23 @@ async function renderGlobalManager(type){
     else rows=await restRequest("trip_purposes?select=*&order=name.asc");
 
     const facilityOptions=(o.facilities||[]).map(f=>`<option value="${f.id}">${esc(f.name)} (${esc(f.code)})</option>`).join("");
+    const odometerMap=o.vehicleOdometers||{};
+    const activeVehicleIds=new Set((o.activeTrips||[]).map(t=>t.vehicle_id));
     const body=rows.map(r=>{
       const f=facilityMap[r.facility_id]||{};
       const value=r[cfg.key]||"";
       const sub=type==="vehicles"?(r.label||""):"";
-      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
+      const odometer=type==="vehicles"?odometerMap[r.id]:null;
+      const odometerCell=type==="vehicles"
+        ?`<td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td>`
+        :"";
+      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td>${odometerCell}<td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
 
     const memberBulk=type==="members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(true)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(true)">양식으로 첨부하기</button>`:"";
-    adminFrame(`<section class="card"><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p><div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="4">등록된 데이터가 없습니다.</td></tr>'}</tbody></table></div></section>`);
+    const odometerHead=type==="vehicles"?"<th>누적 키로수</th>":"";
+    const colCount=type==="vehicles"?5:4;
+    adminFrame(`<section class="card"><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 누적 키로수는 가장 최근에 종료된 운행의 도착 키로수를 표시합니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p><div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}<th>관리</th></tr></thead><tbody>${body||`<tr><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr>`}</tbody></table></div></section>`);
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
 }
 
@@ -606,9 +614,36 @@ function managerData(table){
   if(table==="facility_members")return state.admin.members;
   return state.admin.purposes;
 }
-function renderManager(table,title,key,label){
+async function renderManager(table,title,key,label){
   const rows=managerData(table);
   const memberBulk=table==="facility_members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(false)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(false)">양식으로 첨부하기</button>`:"";
+
+  if(table==="vehicles"){
+    adminFrame('<div class="empty">차량 누적 키로수를 확인하는 중입니다.</div>');
+    let odometerMap={};
+    let activeVehicleIds=new Set();
+    try{
+      const [odometerRows,activeTrips]=await Promise.all([
+        Promise.all(rows.map(async vehicle=>{
+          const result=await restRequest("trips?select=vehicle_id,end_odometer,end_at&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicle.id)+"&status=eq.ended&end_odometer=not.is.null&order=end_at.desc&limit=1");
+          return result?.[0]||null;
+        })),
+        restRequest("trips?select=vehicle_id&facility_id="+eq(state.admin.facility.id)+"&status=eq.active")
+      ]);
+      odometerMap=Object.fromEntries(odometerRows.filter(Boolean).map(t=>[t.vehicle_id,t.end_odometer]));
+      activeVehicleIds=new Set((activeTrips||[]).map(t=>t.vehicle_id));
+    }catch(error){
+      console.warn("vehicle odometer lookup failed",error);
+    }
+
+    const body=rows.map(r=>{
+      const odometer=odometerMap[r.id];
+      return `<tr><td><strong>${esc(r[key])}</strong>${r.label?`<small>${esc(r.label)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></td></tr>`;
+    }).join("");
+    adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 누적 키로수는 가장 최근에 종료된 운행의 도착 키로수이며, 현재 운행 중인 차량은 직전 종료 기록 기준으로 표시됩니다.</p><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="4">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
+    return;
+  }
+
   adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 입력·수정·삭제한 내용은 해당 시설의 직원용 화면에 바로 반영됩니다.${table==="facility_members"?" 직원이 많으면 엑셀 양식으로 한 번에 등록할 수 있습니다.":""}</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form ${table==="facility_members"?"member-add-form":""}"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button>${memberBulk}</div></section>`);
 }
 
