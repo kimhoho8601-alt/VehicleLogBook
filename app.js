@@ -421,38 +421,65 @@ window.saveOwnPassword=async function(){
   }
 }
 
-window.openMasterPasswordReset=function(encodedUserId,encodedName,encodedLoginId){
+window.openMasterAccountEdit=function(encodedUserId,encodedName,encodedCode,encodedLoginId){
   if(state.admin?.profile?.role!=="superadmin")return;
   const userId=decodeURIComponent(encodedUserId);
   const name=decodeURIComponent(encodedName);
+  const code=decodeURIComponent(encodedCode);
   const loginId=decodeURIComponent(encodedLoginId);
-  showAdminModal(`<div class="admin-modal-head"><div><span class="modal-kicker">MASTER 권한</span><h2>관리자 비밀번호 재설정</h2><p><strong>${esc(name)}</strong> · 관리자 ID ${esc(loginId)}</p></div><button class="modal-close" onclick="closeAdminModal()" aria-label="닫기">×</button></div>
-    <label class="field"><span>새 비밀번호</span><input id="masterResetPassword" class="input" type="password" autocomplete="new-password" placeholder="새 비밀번호 입력"></label>
-    <label class="field"><span>새 비밀번호 확인</span><input id="masterResetPasswordConfirm" class="input" type="password" autocomplete="new-password" placeholder="한 번 더 입력"></label>
-    <input type="hidden" id="masterResetUserId" value="${esc(userId)}">
-    <div class="modal-note">저장하면 해당 시설 관리자는 기존 비밀번호 대신 새 비밀번호로 로그인해야 합니다.</div>
-    <div class="modal-actions"><button class="btn light" onclick="closeAdminModal()">취소</button><button class="btn primary" onclick="saveMasterPasswordReset()">새 비밀번호 저장</button></div>`);
-  setTimeout(()=>document.getElementById("masterResetPassword")?.focus(),0);
+  showAdminModal(`<div class="admin-modal-head"><div><span class="modal-kicker">MASTER 권한</span><h2>관리자 계정 정보 수정</h2><p><strong>${esc(name)}</strong> 시설의 접속 코드와 관리자 로그인 정보를 변경합니다.</p></div><button class="modal-close" onclick="closeAdminModal()" aria-label="닫기">×</button></div>
+    <div class="account-edit-grid">
+      <label class="field"><span>시설 코드</span><input id="masterEditFacilityCode" class="input" value="${esc(code)}" autocomplete="off" placeholder="예: JB"></label>
+      <label class="field"><span>관리자 ID</span><input id="masterEditLoginId" class="input" value="${esc(loginId)}" autocomplete="off" placeholder="예: JB"></label>
+    </div>
+    <label class="field"><span>새 비밀번호 <em>선택</em></span><input id="masterEditPassword" class="input" type="password" autocomplete="new-password" placeholder="변경할 때만 입력"></label>
+    <label class="field"><span>새 비밀번호 확인</span><input id="masterEditPasswordConfirm" class="input" type="password" autocomplete="new-password" placeholder="비밀번호를 변경할 경우 한 번 더 입력"></label>
+    <input type="hidden" id="masterEditUserId" value="${esc(userId)}">
+    <input type="hidden" id="masterEditOriginalCode" value="${esc(code)}">
+    <input type="hidden" id="masterEditOriginalLoginId" value="${esc(loginId)}">
+    <div class="modal-note account-edit-warning"><strong>변경 시 주의</strong><br>시설 코드를 바꾸면 기존 직원용 QR·공유 링크는 새 코드로 다시 배포해야 합니다. 관리자 ID를 바꾸면 기존 ID로는 로그인할 수 없습니다.</div>
+    <div class="modal-actions"><button class="btn light" onclick="closeAdminModal()">취소</button><button class="btn primary" onclick="saveMasterAccountEdit()">변경사항 저장</button></div>`);
+  setTimeout(()=>document.getElementById("masterEditFacilityCode")?.focus(),0);
 }
 
-window.saveMasterPasswordReset=async function(){
+window.saveMasterAccountEdit=async function(){
   if(state.admin?.profile?.role!=="superadmin")return toast("최고관리자만 사용할 수 있습니다.");
-  const userId=document.getElementById("masterResetUserId")?.value||"";
-  const pw=document.getElementById("masterResetPassword")?.value||"";
-  const confirmPw=document.getElementById("masterResetPasswordConfirm")?.value||"";
-  if(!userId||!pw)return toast("새 비밀번호를 입력해주세요.");
-  if(pw!==confirmPw)return toast("비밀번호가 서로 다릅니다.");
-  const button=document.querySelector('[onclick="saveMasterPasswordReset()"]');
+  const userId=document.getElementById("masterEditUserId")?.value||"";
+  const facilityCode=(document.getElementById("masterEditFacilityCode")?.value||"").trim().toUpperCase();
+  const loginId=(document.getElementById("masterEditLoginId")?.value||"").trim().toUpperCase();
+  const password=document.getElementById("masterEditPassword")?.value||"";
+  const confirmPassword=document.getElementById("masterEditPasswordConfirm")?.value||"";
+  const originalCode=document.getElementById("masterEditOriginalCode")?.value||"";
+  const originalLoginId=document.getElementById("masterEditOriginalLoginId")?.value||"";
+
+  if(!userId||!facilityCode||!loginId)return toast("시설 코드와 관리자 ID를 입력해주세요.");
+  if(password!==confirmPassword)return toast("비밀번호가 서로 다릅니다.");
+  if(facilityCode===originalCode&&loginId===originalLoginId&&!password)return toast("변경할 내용이 없습니다.");
+
+  const button=document.querySelector('[onclick="saveMasterAccountEdit()"]');
   if(button){button.disabled=true;button.textContent="저장 중...";}
   try{
-    await callAdminApi({action:"resetPassword",userId,password:pw});
+    const result=await callAdminApi({
+      action:"updateAccount",
+      userId,
+      facilityCode,
+      loginId,
+      password
+    });
     closeAdminModal();
-    toast("시설 관리자 비밀번호를 변경했습니다.");
+    state.overview=null;
+    await loadAdminAccounts();
+    const changed=[];
+    if(result.facilityCode&&result.facilityCode!==originalCode)changed.push("시설 코드");
+    if(result.loginId&&result.loginId!==originalLoginId)changed.push("관리자 ID");
+    if(password)changed.push("비밀번호");
+    toast((changed.length?changed.join(" · "):"계정 정보")+"를 변경했습니다.");
   }catch(error){
-    toast(error.message||"비밀번호를 변경하지 못했습니다.");
-    if(button){button.disabled=false;button.textContent="새 비밀번호 저장";}
+    toast(error.message||"계정 정보를 변경하지 못했습니다.");
+    if(button){button.disabled=false;button.textContent="변경사항 저장";}
   }
 }
+
 window.resetAllTripData=async function(){
   if(state.admin?.profile?.role!=="superadmin")return toast("최고관리자만 사용할 수 있습니다.");
   const first=confirm("모든 시설의 운행일지 데이터를 초기화할까요?\n\n시설·차량·직원·운행목적·관리자 계정은 유지되고, 운행기록만 삭제됩니다.");
@@ -792,7 +819,7 @@ window.loadAdminAccounts=async function(){
       const loginId=item.loginId||"";
       const adminUrl=location.origin+location.pathname+"?admin=1&login="+encodeURIComponent(loginId);
       const staffUrl=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
-      return `<div class="admin-account-row"><button type="button" class="admin-account-summary" onclick="toggleAdminShare('adminShare${i}')"><span><strong>${esc(name)}</strong><small>${esc(code)} · 관리자 ID ${esc(loginId)}</small></span><span class="share-open">계정 관리 ›</span></button><div id="adminShare${i}" class="admin-share-panel" hidden><div class="admin-account-actions"><button class="btn light preview-account-btn" onclick="previewFacility('${encodeURIComponent(code)}')">담당자 화면 미리보기</button><button class="btn light account-password-btn" onclick="openMasterPasswordReset('${encodeURIComponent(item.id)}','${encodeURIComponent(name)}','${encodeURIComponent(loginId)}')">비밀번호 변경</button></div><label>관리자 로그인 링크</label><div class="share-line"><input class="input" readonly value="${esc(adminUrl)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(adminUrl)}')">복사</button></div></div><label>직원용 시설 링크</label><div class="share-line"><input class="input" readonly value="${esc(staffUrl)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(staffUrl)}')">복사</button><button class="icon-btn" onclick="downloadStaffQr('${encodeURIComponent(code)}','${encodeURIComponent(name)}')">QR 다운로드</button></div></div></div></div>`;
+      return `<div class="admin-account-row"><button type="button" class="admin-account-summary" onclick="toggleAdminShare('adminShare${i}')"><span><strong>${esc(name)}</strong><small>${esc(code)} · 관리자 ID ${esc(loginId)}</small></span><span class="share-open">계정 관리 ›</span></button><div id="adminShare${i}" class="admin-share-panel" hidden><div class="admin-account-actions"><button class="btn light preview-account-btn" onclick="previewFacility('${encodeURIComponent(code)}')">담당자 화면 미리보기</button><button class="btn light account-password-btn" onclick="openMasterAccountEdit('${encodeURIComponent(item.id)}','${encodeURIComponent(name)}','${encodeURIComponent(code)}','${encodeURIComponent(loginId)}')">계정 정보 수정</button></div><label>관리자 로그인 링크</label><div class="share-line"><input class="input" readonly value="${esc(adminUrl)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(adminUrl)}')">복사</button></div></div><label>직원용 시설 링크</label><div class="share-line"><input class="input" readonly value="${esc(staffUrl)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(staffUrl)}')">복사</button><button class="icon-btn" onclick="downloadStaffQr('${encodeURIComponent(code)}','${encodeURIComponent(name)}')">QR 다운로드</button></div></div></div></div>`;
     }).join("");
   }catch(error){
     wrap.innerHTML='<div class="empty">'+esc(error.message||"관리자 목록을 불러오지 못했습니다.")+'</div>';
