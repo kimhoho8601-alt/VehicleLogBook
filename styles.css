@@ -1237,3 +1237,19 @@ h1,h2,h3,p{word-break:keep-all}
     white-space:nowrap;
   }
 }
+
+.account-edit-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.account-edit-warning{
+  margin-top:4px;
+  line-height:1.65;
+}
+.account-edit-warning strong{
+  color:var(--red);
+}
+@media(max-width:620px){
+  .account-edit-grid{grid-template-columns:1fr}
+}
