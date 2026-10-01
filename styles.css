@@ -1273,3 +1273,137 @@ h1,h2,h3,p{word-break:keep-all}
 .vehicle-admin-table td:nth-child(3){
   text-align:right;
 }
+
+/* 운행 종료 선택 비용 */
+.end-expense-section{
+  margin:18px 0 20px;
+  padding:16px;
+  border:1px solid #eadde0;
+  border-radius:16px;
+  background:#fcfafb;
+}
+.end-expense-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:12px;
+}
+.end-expense-head strong{
+  display:block;
+  margin-top:3px;
+  font-size:15px;
+  letter-spacing:-.025em;
+}
+.end-expense-head small{
+  color:#8d7e82;
+  font-size:11px;
+  text-align:right;
+}
+.end-expense-tabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.end-expense-tab{
+  min-height:70px;
+  padding:12px 14px;
+  border:1px solid #e6d8dc;
+  border-radius:13px;
+  background:#fff;
+  color:#241d1f;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .15s ease,background .15s ease,box-shadow .15s ease,transform .15s ease;
+}
+.end-expense-tab span{
+  display:block;
+  font-size:14px;
+  font-weight:900;
+}
+.end-expense-tab small{
+  display:block;
+  margin-top:4px;
+  color:#8a7a7e;
+  font-size:11px;
+}
+.end-expense-tab:hover{
+  border-color:#d9b9c1;
+}
+.end-expense-tab.active{
+  border-color:var(--red);
+  background:#fff5f7;
+  box-shadow:0 0 0 3px rgba(215,0,42,.07);
+  color:var(--red);
+}
+.end-expense-tab.active small{color:#8b5360}
+.end-expense-field{
+  margin-top:10px;
+  padding:12px 12px 4px;
+  border-radius:12px;
+  background:#fff;
+  border:1px solid #f0e4e7;
+}
+.end-expense-field[hidden]{display:none}
+
+/* Excel 선택 다운로드 */
+.report-export-options{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin:4px 0 14px;
+}
+.report-export-option{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:15px;
+  border:1px solid #e8dadd;
+  border-radius:14px;
+  background:#fff;
+  cursor:pointer;
+}
+.report-export-option:hover{
+  border-color:#dcaebb;
+  background:#fffafb;
+}
+.report-export-option input{
+  width:18px;
+  height:18px;
+  margin:2px 0 0;
+  accent-color:var(--red);
+  flex:0 0 auto;
+}
+.report-export-option strong{
+  display:block;
+  font-size:14px;
+}
+.report-export-option small{
+  display:block;
+  margin-top:4px;
+  color:#85767a;
+  font-size:11px;
+  line-height:1.5;
+}
+.report-edit-table{
+  min-width:1660px;
+}
+.report-edit-table .edit-highpass-cost,
+.report-edit-table .edit-fuel-cost{
+  min-width:105px;
+}
+
+@media(max-width:540px){
+  .end-expense-head{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:5px;
+  }
+  .end-expense-head small{text-align:left}
+  .end-expense-tabs{grid-template-columns:1fr 1fr}
+  .end-expense-tab{
+    min-height:66px;
+    padding:11px 10px;
+  }
+  .report-export-options{grid-template-columns:1fr}
+}
