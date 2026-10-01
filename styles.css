@@ -1190,3 +1190,50 @@ h1,h2,h3,p{word-break:keep-all}
   .modal-actions .btn{width:100%}
   .share-line-actions{display:grid;grid-template-columns:1fr 1fr}
 }
+
+/* 동승자 선택 완료 액션 */
+.staff-passenger-menu-actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.staff-passenger-menu-head .passenger-clear-btn{
+  min-height:30px;
+  padding:6px 8px;
+  border:1px solid transparent;
+  border-radius:8px;
+  background:transparent;
+  color:#8a777c;
+}
+.staff-passenger-menu-head .passenger-clear-btn:hover{
+  background:#faf5f6;
+  color:var(--red);
+}
+.staff-passenger-menu-head .passenger-done-btn{
+  min-height:30px;
+  padding:6px 10px;
+  border:1px solid var(--red);
+  border-radius:8px;
+  background:var(--red);
+  color:#fff;
+  box-shadow:0 5px 14px rgba(215,0,42,.14);
+}
+.staff-passenger-menu-head .passenger-done-btn:hover{
+  background:#bc0025;
+  border-color:#bc0025;
+}
+@media(max-width:540px){
+  .staff-passenger-menu-head{
+    align-items:center;
+  }
+  .staff-passenger-menu-actions{
+    gap:4px;
+  }
+  .staff-passenger-menu-head .passenger-clear-btn,
+  .staff-passenger-menu-head .passenger-done-btn{
+    min-height:34px;
+    padding:7px 9px;
+    font-size:11px;
+    white-space:nowrap;
+  }
+}
