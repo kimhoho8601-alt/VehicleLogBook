@@ -307,9 +307,11 @@ async function loadAdminContext(){
 }
 function adminFrame(content){
   const a=state.admin;
-  const masterNav=a.profile.role==="superadmin"?`<button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="accounts"?"active":""}" onclick="setAdminTab('accounts')">관리자 계정 등록</button>`:"";
-  const resetButton=a.profile.role==="superadmin"?`<button class="text-btn reset-data-btn" onclick="resetAllTripData()">운행 데이터 초기화</button>`:"";
-  app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${a.profile.role==="superadmin"?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}${resetButton}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${masterNav}</nav><div id="adminContent">${content}</div></main>`;
+  const isMaster=a.profile.role==="superadmin";
+  const masterNav=isMaster?`<button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="accounts"?"active":""}" onclick="setAdminTab('accounts')">관리자 계정 등록</button>`:"";
+  const resetButton=isMaster?`<button class="text-btn reset-data-btn" onclick="resetAllTripData()">운행 데이터 초기화</button>`:"";
+  const facilityTools=!isMaster?`<button class="text-btn share-staff-btn" onclick="openFacilityShare()">직원 공유 링크</button><button class="text-btn" onclick="openOwnPasswordChange()">비밀번호 변경</button>`:"";
+  app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${isMaster?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}${facilityTools}${resetButton}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${masterNav}</nav><div id="adminContent">${content}</div></main>`;
 }
 window.setAdminTab=function(tab){state.adminTab=tab;renderAdminHome()}
 window.adminLogout=async function(){await signOut();state.admin=null;renderLogin()}
@@ -317,6 +319,129 @@ window.previewFacility=function(encodedCode){
   const code=decodeURIComponent(encodedCode);
   const url=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
   window.open(url,"_blank","noopener");
+}
+function employeeShareUrl(code){
+  return location.origin+location.pathname+"?facility="+encodeURIComponent(code);
+}
+function closeAdminModal(){
+  document.getElementById("adminModal")?.remove();
+}
+window.closeAdminModal=closeAdminModal;
+
+function showAdminModal(inner){
+  closeAdminModal();
+  document.body.insertAdjacentHTML("beforeend",`<div id="adminModal" class="admin-modal-backdrop" onclick="if(event.target===this)closeAdminModal()"><section class="admin-modal" role="dialog" aria-modal="true">${inner}</section></div>`);
+}
+
+window.openFacilityShare=function(){
+  const f=state.admin?.facility;
+  if(!f||state.admin?.profile?.role==="superadmin")return;
+  const url=employeeShareUrl(f.code);
+  showAdminModal(`<div class="admin-modal-head"><div><span class="modal-kicker">직원용 접속</span><h2>직원 공유용 링크</h2><p>${esc(f.name)} 직원이 차량 운행일지를 등록할 때 사용하는 전용 주소입니다.</p></div><button class="modal-close" onclick="closeAdminModal()" aria-label="닫기">×</button></div>
+    <div class="share-link-box"><label>직원용 주소</label><div class="share-line"><input class="input" readonly value="${esc(url)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(url)}')">링크 복사</button></div></div></div>
+    <div class="qr-share-card"><canvas id="staffShareQr" width="260" height="260"></canvas><div><strong>QR로 바로 접속</strong><p>QR을 스캔하면 별도 로그인 없이 이 시설의 차량 선택 화면으로 이동합니다.</p><button class="btn primary qr-download-btn" onclick="downloadStaffQr('${encodeURIComponent(f.code)}','${encodeURIComponent(f.name)}')">QR 이미지 다운로드</button></div></div>`);
+  renderStaffQr(url,"staffShareQr");
+}
+
+function renderStaffQr(url,canvasId){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas)return;
+  if(!window.QRCode?.toCanvas){
+    const ctx=canvas.getContext("2d");
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#f8f5f6";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle="#6b5c60";
+    ctx.font="14px sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText("QR 모듈을 불러오지 못했습니다.",canvas.width/2,canvas.height/2);
+    return;
+  }
+  window.QRCode.toCanvas(canvas,url,{width:260,margin:2,errorCorrectionLevel:"M",color:{dark:"#111111",light:"#ffffff"}},()=>{});
+}
+
+window.downloadStaffQr=async function(encodedCode,encodedName){
+  const code=decodeURIComponent(encodedCode);
+  const name=decodeURIComponent(encodedName||encodedCode);
+  const url=employeeShareUrl(code);
+  if(!window.QRCode?.toDataURL)return toast("QR 생성 모듈을 불러오지 못했습니다.");
+  try{
+    const dataUrl=await window.QRCode.toDataURL(url,{width:720,margin:3,errorCorrectionLevel:"M",color:{dark:"#111111",light:"#ffffff"}});
+    const a=document.createElement("a");
+    a.href=dataUrl;
+    a.download=(name||code).replace(/[\\/:*?"<>|]/g,"_")+"_직원용_QR.png";
+    a.click();
+    toast("직원용 QR 이미지를 다운로드했습니다.");
+  }catch(error){toast("QR 이미지를 만들지 못했습니다.");}
+}
+
+window.openOwnPasswordChange=function(){
+  if(state.admin?.profile?.role==="superadmin")return;
+  showAdminModal(`<div class="admin-modal-head"><div><span class="modal-kicker">계정 보안</span><h2>비밀번호 변경</h2><p>현재 로그인된 시설 관리자 계정의 새 비밀번호를 입력하세요.</p></div><button class="modal-close" onclick="closeAdminModal()" aria-label="닫기">×</button></div>
+    <label class="field"><span>새 비밀번호</span><input id="ownNewPassword" class="input" type="password" autocomplete="new-password" placeholder="새 비밀번호 입력"></label>
+    <label class="field"><span>새 비밀번호 확인</span><input id="ownNewPasswordConfirm" class="input" type="password" autocomplete="new-password" placeholder="한 번 더 입력"></label>
+    <div class="modal-actions"><button class="btn light" onclick="closeAdminModal()">취소</button><button class="btn primary" onclick="saveOwnPassword()">비밀번호 변경</button></div>`);
+  setTimeout(()=>document.getElementById("ownNewPassword")?.focus(),0);
+}
+
+window.saveOwnPassword=async function(){
+  const pw=document.getElementById("ownNewPassword")?.value||"";
+  const confirmPw=document.getElementById("ownNewPasswordConfirm")?.value||"";
+  if(!pw)return toast("새 비밀번호를 입력해주세요.");
+  if(pw!==confirmPw)return toast("비밀번호가 서로 다릅니다.");
+  const button=document.querySelector('[onclick="saveOwnPassword()"]');
+  if(button){button.disabled=true;button.textContent="변경 중...";}
+  try{
+    const session=await validSession();
+    const r=await fetch(SUPABASE_URL+"/auth/v1/user",{
+      method:"PUT",
+      headers:{"Content-Type":"application/json","apikey":SUPABASE_KEY,"Authorization":"Bearer "+session.access_token},
+      body:JSON.stringify({password:pw})
+    });
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(data.msg||data.message||data.error_description||"비밀번호를 변경하지 못했습니다.");
+    closeAdminModal();
+    await signOut();
+    state.admin=null;
+    renderLogin();
+    setTimeout(()=>toast("비밀번호를 변경했습니다. 새 비밀번호로 다시 로그인해주세요."),50);
+  }catch(error){
+    toast(error.message||"비밀번호를 변경하지 못했습니다.");
+    if(button){button.disabled=false;button.textContent="비밀번호 변경";}
+  }
+}
+
+window.openMasterPasswordReset=function(encodedUserId,encodedName,encodedLoginId){
+  if(state.admin?.profile?.role!=="superadmin")return;
+  const userId=decodeURIComponent(encodedUserId);
+  const name=decodeURIComponent(encodedName);
+  const loginId=decodeURIComponent(encodedLoginId);
+  showAdminModal(`<div class="admin-modal-head"><div><span class="modal-kicker">MASTER 권한</span><h2>관리자 비밀번호 재설정</h2><p><strong>${esc(name)}</strong> · 관리자 ID ${esc(loginId)}</p></div><button class="modal-close" onclick="closeAdminModal()" aria-label="닫기">×</button></div>
+    <label class="field"><span>새 비밀번호</span><input id="masterResetPassword" class="input" type="password" autocomplete="new-password" placeholder="새 비밀번호 입력"></label>
+    <label class="field"><span>새 비밀번호 확인</span><input id="masterResetPasswordConfirm" class="input" type="password" autocomplete="new-password" placeholder="한 번 더 입력"></label>
+    <input type="hidden" id="masterResetUserId" value="${esc(userId)}">
+    <div class="modal-note">저장하면 해당 시설 관리자는 기존 비밀번호 대신 새 비밀번호로 로그인해야 합니다.</div>
+    <div class="modal-actions"><button class="btn light" onclick="closeAdminModal()">취소</button><button class="btn primary" onclick="saveMasterPasswordReset()">새 비밀번호 저장</button></div>`);
+  setTimeout(()=>document.getElementById("masterResetPassword")?.focus(),0);
+}
+
+window.saveMasterPasswordReset=async function(){
+  if(state.admin?.profile?.role!=="superadmin")return toast("최고관리자만 사용할 수 있습니다.");
+  const userId=document.getElementById("masterResetUserId")?.value||"";
+  const pw=document.getElementById("masterResetPassword")?.value||"";
+  const confirmPw=document.getElementById("masterResetPasswordConfirm")?.value||"";
+  if(!userId||!pw)return toast("새 비밀번호를 입력해주세요.");
+  if(pw!==confirmPw)return toast("비밀번호가 서로 다릅니다.");
+  const button=document.querySelector('[onclick="saveMasterPasswordReset()"]');
+  if(button){button.disabled=true;button.textContent="저장 중...";}
+  try{
+    await callAdminApi({action:"resetPassword",userId,password:pw});
+    closeAdminModal();
+    toast("시설 관리자 비밀번호를 변경했습니다.");
+  }catch(error){
+    toast(error.message||"비밀번호를 변경하지 못했습니다.");
+    if(button){button.disabled=false;button.textContent="새 비밀번호 저장";}
+  }
 }
 window.resetAllTripData=async function(){
   if(state.admin?.profile?.role!=="superadmin")return toast("최고관리자만 사용할 수 있습니다.");
@@ -657,7 +782,7 @@ window.loadAdminAccounts=async function(){
       const loginId=item.loginId||"";
       const adminUrl=location.origin+location.pathname+"?admin=1&login="+encodeURIComponent(loginId);
       const staffUrl=location.origin+location.pathname+"?facility="+encodeURIComponent(code);
-      return `<div class="admin-account-row"><button type="button" class="admin-account-summary" onclick="toggleAdminShare('adminShare${i}')"><span><strong>${esc(name)}</strong><small>${esc(code)} · 관리자 ID ${esc(loginId)}</small></span><span class="share-open">공유 링크 ›</span></button><div id="adminShare${i}" class="admin-share-panel" hidden><button class="btn light preview-account-btn" onclick="previewFacility('${encodeURIComponent(code)}')">담당자 화면 미리보기</button><label>관리자 로그인 링크</label><div class="share-line"><input class="input" readonly value="${esc(adminUrl)}"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(adminUrl)}')">복사</button></div><label>직원용 시설 링크</label><div class="share-line"><input class="input" readonly value="${esc(staffUrl)}"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(staffUrl)}')">복사</button></div></div></div>`;
+      return `<div class="admin-account-row"><button type="button" class="admin-account-summary" onclick="toggleAdminShare('adminShare${i}')"><span><strong>${esc(name)}</strong><small>${esc(code)} · 관리자 ID ${esc(loginId)}</small></span><span class="share-open">계정 관리 ›</span></button><div id="adminShare${i}" class="admin-share-panel" hidden><div class="admin-account-actions"><button class="btn light preview-account-btn" onclick="previewFacility('${encodeURIComponent(code)}')">담당자 화면 미리보기</button><button class="btn light account-password-btn" onclick="openMasterPasswordReset('${encodeURIComponent(item.id)}','${encodeURIComponent(name)}','${encodeURIComponent(loginId)}')">비밀번호 변경</button></div><label>관리자 로그인 링크</label><div class="share-line"><input class="input" readonly value="${esc(adminUrl)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(adminUrl)}')">복사</button></div></div><label>직원용 시설 링크</label><div class="share-line"><input class="input" readonly value="${esc(staffUrl)}"><div class="share-line-actions"><button class="icon-btn" onclick="copyShareLink('${encodeURIComponent(staffUrl)}')">복사</button><button class="icon-btn" onclick="downloadStaffQr('${encodeURIComponent(code)}','${encodeURIComponent(name)}')">QR 다운로드</button></div></div></div></div>`;
     }).join("");
   }catch(error){
     wrap.innerHTML='<div class="empty">'+esc(error.message||"관리자 목록을 불러오지 못했습니다.")+'</div>';
