@@ -148,10 +148,57 @@ function renderEnd(v,a){
     <div class="trip-summary"><div><span>행선지</span><strong>${esc(a.destination||"-")}</strong></div><div><span>출발 키로수</span><strong>${Number(a.start_odometer).toLocaleString()} km</strong></div></div>
     <label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="0.1" inputmode="decimal" placeholder="${Number(a.start_odometer).toLocaleString()} km 이상 입력"></label>
     <p class="field-help">도착 키로수는 출발 키로수보다 작을 수 없습니다.</p>
+
+    <section class="end-expense-section">
+      <div class="end-expense-head"><div><span class="card-kicker">추가 비용</span><strong>필요한 항목만 선택하세요</strong></div><small>선택하지 않으면 비용 없이 운행만 종료됩니다.</small></div>
+      <div class="end-expense-tabs">
+        <button type="button" id="highpassExpenseTab" class="end-expense-tab" aria-pressed="false" onclick="toggleEndExpense('highpass')"><span>하이패스</span><small>통행료가 있었어요</small></button>
+        <button type="button" id="fuelExpenseTab" class="end-expense-tab" aria-pressed="false" onclick="toggleEndExpense('fuel')"><span>주유</span><small>주유비가 있었어요</small></button>
+      </div>
+      <div id="highpassExpenseField" class="end-expense-field" hidden>
+        <label class="field"><span>하이패스 비용 (원)</span><input id="highpassCost" class="input" type="number" min="0" step="100" inputmode="numeric" placeholder="예: 5,400"></label>
+      </div>
+      <div id="fuelExpenseField" class="end-expense-field" hidden>
+        <label class="field"><span>주유 비용 (원)</span><input id="fuelCost" class="input" type="number" min="0" step="100" inputmode="numeric" placeholder="예: 70,000"></label>
+      </div>
+    </section>
+
     <button class="btn primary" onclick="endTrip('${a.id}')">운행 종료하기</button>
   </div>`,state.data.facility.name);
 }
-window.endTrip=async function(id){const endOdometer=Number(document.getElementById("endKm").value);if(!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");try{await api({action:"endTrip",tripId:id,endOdometer});toast("운행을 종료했습니다.");await loadPublic()}catch(e){toast(e.message)}}
+window.toggleEndExpense=function(type){
+  const isHighpass=type==="highpass";
+  const tab=document.getElementById(isHighpass?"highpassExpenseTab":"fuelExpenseTab");
+  const field=document.getElementById(isHighpass?"highpassExpenseField":"fuelExpenseField");
+  if(!tab||!field)return;
+  const next=tab.getAttribute("aria-pressed")!=="true";
+  tab.setAttribute("aria-pressed",next?"true":"false");
+  tab.classList.toggle("active",next);
+  field.hidden=!next;
+  if(!next){
+    const input=field.querySelector("input");
+    if(input)input.value="";
+  }else{
+    setTimeout(()=>field.querySelector("input")?.focus(),0);
+  }
+}
+window.endTrip=async function(id){
+  const endOdometer=Number(document.getElementById("endKm")?.value);
+  if(!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");
+  const highpassSelected=document.getElementById("highpassExpenseTab")?.getAttribute("aria-pressed")==="true";
+  const fuelSelected=document.getElementById("fuelExpenseTab")?.getAttribute("aria-pressed")==="true";
+  const highpassRaw=document.getElementById("highpassCost")?.value??"";
+  const fuelRaw=document.getElementById("fuelCost")?.value??"";
+  const highpassCost=highpassSelected?(highpassRaw===""?NaN:Number(highpassRaw)):null;
+  const fuelCost=fuelSelected?(fuelRaw===""?NaN:Number(fuelRaw)):null;
+  if(highpassSelected&&(!Number.isFinite(highpassCost)||highpassCost<0))return toast("하이패스 비용을 입력해주세요.");
+  if(fuelSelected&&(!Number.isFinite(fuelCost)||fuelCost<0))return toast("주유 비용을 입력해주세요.");
+  try{
+    await api({action:"endTrip",tripId:id,endOdometer,highpassCost,fuelCost});
+    toast("운행을 종료했습니다.");
+    await loadPublic();
+  }catch(e){toast(e.message)}
+}
 
 const SESSION_KEY="vehiclelogbook_session_v2";
 
@@ -1005,6 +1052,8 @@ function reportRowHtml(r,i,data){
     <td><input class="cell-input number-input edit-start-km" type="number" step="0.1" value="${r.start_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
     <td><input class="cell-input number-input edit-end-km" type="number" step="0.1" value="${r.end_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
     <td class="distance-cell">${r.distance!=null?Number(r.distance).toLocaleString():"-"}</td>
+    <td><input class="cell-input number-input edit-highpass-cost" type="number" min="0" step="100" value="${r.highpass_cost??""}" placeholder="-" oninput="markReportRowChanged(this)"></td>
+    <td><input class="cell-input number-input edit-fuel-cost" type="number" min="0" step="100" value="${r.fuel_cost??""}" placeholder="-" oninput="markReportRowChanged(this)"></td>
     <td><input class="cell-input edit-note" value="${esc(r.note||"")}" onchange="markReportRowChanged(this)"></td>
   </tr>`;
 }
@@ -1021,7 +1070,7 @@ function reportEditorMarkup(data,{saved=false}={}){
       </div>
       <span id="selectionCountLabel">선택된 행 없음</span>
     </div>
-    <div class="table-scroll report-edit-scroll"><table class="admin-table report-edit-table"><thead><tr><th class="row-drag-head"></th><th class="row-select-head"><input id="selectAllReportRows" type="checkbox" aria-label="전체 선택" onchange="toggleAllReportRows(this)"></th><th>날짜</th><th>운전자</th><th>동행자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>출발km</th><th>도착km</th><th>운행거리</th><th>비고</th></tr></thead><tbody id="reportEditBody">${rows||'<tr class="report-empty-row"><td colspan="13">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>'}</tbody></table></div>
+    <div class="table-scroll report-edit-scroll"><table class="admin-table report-edit-table"><thead><tr><th class="row-drag-head"></th><th class="row-select-head"><input id="selectAllReportRows" type="checkbox" aria-label="전체 선택" onchange="toggleAllReportRows(this)"></th><th>날짜</th><th>운전자</th><th>동행자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>출발km</th><th>도착km</th><th>운행거리</th><th>하이패스</th><th>주유</th><th>비고</th></tr></thead><tbody id="reportEditBody">${rows||'<tr class="report-empty-row"><td colspan="15">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>'}</tbody></table></div>
     <div class="editor-bottom"><div class="editor-bottom-status"><span id="editCountLabel">변경된 기록 없음</span><span class="editor-bottom-divider">·</span><span id="bottomSelectionCount">선택된 행 없음</span></div><div class="editor-bottom-actions"><button type="button" class="btn light" onclick="addReportRow()">＋ 행 추가</button><button class="btn primary" onclick="saveReportEdits()">변경사항 저장</button></div></div>
   </section>`;
 }
@@ -1178,6 +1227,8 @@ window.addReportRow=function(){
     start_odometer:previousEnd,
     end_odometer:"",
     distance:null,
+    highpass_cost:null,
+    fuel_cost:null,
     note:"",
     admin_sort_order:existing.length+1
   };
@@ -1209,7 +1260,7 @@ window.deleteSelectedReportRows=async function(){
     }else{
       markReportOrderChanged();
       const body=document.getElementById("reportEditBody");
-      if(body&&!body.querySelector(".edit-trip-row"))body.innerHTML='<tr class="report-empty-row"><td colspan="13">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>';
+      if(body&&!body.querySelector(".edit-trip-row"))body.innerHTML='<tr class="report-empty-row"><td colspan="15">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>';
     }
   }catch(error){toast(error.message||"선택한 기록을 삭제하지 못했습니다.")}
 }
@@ -1224,12 +1275,16 @@ function collectReportRows(){
     const endRaw=row.querySelector(".edit-end-km").value;
     const startKm=startRaw===""?NaN:Number(startRaw);
     const endKm=endRaw===""?NaN:Number(endRaw);
+    const highpassRaw=row.querySelector(".edit-highpass-cost")?.value??"";
+    const fuelRaw=row.querySelector(".edit-fuel-cost")?.value??"";
+    const highpassCost=highpassRaw===""?null:Number(highpassRaw);
+    const fuelCost=fuelRaw===""?null:Number(fuelRaw);
     return {
       id:row.dataset.tripId,
       isNew:row.dataset.new==="1",
       changed:row.classList.contains("changed"),
       sortOrder:index+1,
-      date,startTime,endTime,startKm,endKm,
+      date,startTime,endTime,startKm,endKm,highpassCost,fuelCost,
       driver_id:row.querySelector(".edit-driver").value,
       passenger_ids:selectedPassengers,
       purpose_id:row.querySelector(".edit-purpose").value,
@@ -1246,6 +1301,8 @@ function validateReportRows(rows){
     if(!r.date||!r.startTime||!r.endTime||!r.driver_id||!r.purpose_id||!r.destination)return "필수값이 비어 있는 행이 있습니다.";
     if(!Number.isFinite(r.startKm)||!Number.isFinite(r.endKm))return "키로수는 숫자로 입력해주세요.";
     if(r.endKm<r.startKm)return "도착 키로수는 출발 키로수보다 작을 수 없습니다.";
+    if(r.highpassCost!==null&&(!Number.isFinite(r.highpassCost)||r.highpassCost<0))return "하이패스 비용은 0원 이상의 숫자로 입력해주세요.";
+    if(r.fuelCost!==null&&(!Number.isFinite(r.fuelCost)||r.fuelCost<0))return "주유 비용은 0원 이상의 숫자로 입력해주세요.";
     if(new Date(r.end_at)<new Date(r.start_at))return "도착시간은 출발시간보다 빠를 수 없습니다.";
   }
   const chronological=[...rows].sort((a,b)=>new Date(a.start_at)-new Date(b.start_at));
@@ -1277,6 +1334,8 @@ window.saveReportEdits=async function(){
         start_odometer:r.startKm,
         end_odometer:r.endKm,
         distance:r.endKm-r.startKm,
+        highpass_cost:r.highpassCost,
+        fuel_cost:r.fuelCost,
         status:"ended",
         note:r.note||null,
         admin_edited_at:new Date().toISOString(),
@@ -1336,35 +1395,71 @@ function zipStore(files){
   const end=concatBytes([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBytes.length),u32(offset),u16(0)]);
   return concatBytes([...locals,centralBytes,end]);
 }
-function buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName=""){
+function xlsxCol(n){
+  let s="";
+  while(n>0){n--;s=String.fromCharCode(65+(n%26))+s;n=Math.floor(n/26);}
+  return s;
+}
+function buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName="",options={}){
+  const includeHighpass=options.includeHighpass===true;
+  const includeFuel=options.includeFuel===true;
   const sheetRows=[];
   const monthLabel=String(Number(String(month||"").split("-")[1]||0)||"").trim();
+  const headers=["날짜","운전자","동행자","용무","행선지","출발시간","도착시간","출발km","도착km","운행거리"];
+  if(includeHighpass)headers.push("하이패스(원)");
+  if(includeFuel)headers.push("주유(원)");
+  const lastCol=xlsxCol(headers.length);
+  const approvalStart=Math.max(8,headers.length-2);
+  const approvalMid=approvalStart+1;
+  const approvalEnd=approvalStart+2;
+  const approvalStartCol=xlsxCol(approvalStart);
+  const approvalMidCol=xlsxCol(approvalMid);
+  const approvalEndCol=xlsxCol(approvalEnd);
   const add=(n,cells,h)=>sheetRows.push(`<row r="${n}"${h?` ht="${h}" customHeight="1"`:""}>${cells.join("")}</row>`);
-  add(1,[xlsxText("H1","결재",7),xlsxText("I1","담당",2),xlsxText("J1","팀장",2)],28);
-  add(2,[xlsxText("H2","",7),xlsxText("I2","",3),xlsxText("J2","",3)],34);
+
+  add(1,[xlsxText(approvalStartCol+"1","결재",7),xlsxText(approvalMidCol+"1","담당",2),xlsxText(approvalEndCol+"1","팀장",2)],28);
+  add(2,[xlsxText(approvalStartCol+"2","",7),xlsxText(approvalMidCol+"2","",3),xlsxText(approvalEndCol+"2","",3)],34);
   add(3,[],8);
   add(4,[xlsxText("A4",(monthLabel?monthLabel+"월 ":"")+"차량운행일지",1)],30);
   add(5,[],8);
   add(6,[xlsxText("A6","차량",2),xlsxText("B6",vehicle?.plate_number||"",3),xlsxText("C6","",3),xlsxText("D6","시설",2),xlsxText("E6",facilityName,3),xlsxText("F6","",3),xlsxText("G6","",3)],23);
   add(7,[xlsxText("A7","대상월",2),xlsxText("B7",month,3)],23);
-  add(8,["날짜","운전자","동행자","용무","행선지","출발시간","도착시간","출발km","도착km","운행거리"].map((x,i)=>xlsxText(String.fromCharCode(65+i)+"8",x,2)),25);
+  add(8,headers.map((x,i)=>xlsxText(xlsxCol(i+1)+"8",x,2)),25);
+
   const bodyCount=Math.max(30,rows.length);
   for(let i=0;i<bodyCount;i++){
     const n=9+i,r=rows[i];
-    add(n,[
-      xlsxText(`A${n}`,r?seoulDateKey(r.start_at):"",3),
-      xlsxText(`B${n}`,r?members[r.driver_id]||"":"",3),
-      xlsxText(`C${n}`,r?(r.passenger_ids||[]).map(id=>members[id]).filter(Boolean).join(", "):"",3),
-      xlsxText(`D${n}`,r?purposes[r.purpose_id]||"":"",3),
-      xlsxText(`E${n}`,r?r.destination||"":"",3),
-      xlsxText(`F${n}`,r?seoulTime(r.start_at):"",3),
-      xlsxText(`G${n}`,r?seoulTime(r.end_at):"",3),
-      r?xlsxNum(`H${n}`,r.start_odometer,3):xlsxText(`H${n}`,"",3),
-      r?xlsxNum(`I${n}`,r.end_odometer,3):xlsxText(`I${n}`,"",3),
-      r?xlsxNum(`J${n}`,r.distance,3):xlsxText(`J${n}`,"",3)
-    ],22);
+    const cells=[
+      xlsxText("A"+n,r?seoulDateKey(r.start_at):"",3),
+      xlsxText("B"+n,r?members[r.driver_id]||"":"",3),
+      xlsxText("C"+n,r?(r.passenger_ids||[]).map(id=>members[id]).filter(Boolean).join(", "):"",3),
+      xlsxText("D"+n,r?purposes[r.purpose_id]||"":"",3),
+      xlsxText("E"+n,r?r.destination||"":"",3),
+      xlsxText("F"+n,r?seoulTime(r.start_at):"",3),
+      xlsxText("G"+n,r?seoulTime(r.end_at):"",3),
+      r?xlsxNum("H"+n,r.start_odometer,3):xlsxText("H"+n,"",3),
+      r?xlsxNum("I"+n,r.end_odometer,3):xlsxText("I"+n,"",3),
+      r?xlsxNum("J"+n,r.distance,3):xlsxText("J"+n,"",3)
+    ];
+    let col=11;
+    if(includeHighpass){
+      cells.push(r?xlsxNum(xlsxCol(col)+n,r.highpass_cost,3):xlsxText(xlsxCol(col)+n,"",3));
+      col++;
+    }
+    if(includeFuel){
+      cells.push(r?xlsxNum(xlsxCol(col)+n,r.fuel_cost,3):xlsxText(xlsxCol(col)+n,"",3));
+    }
+    add(n,cells,22);
   }
-  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="3" width="14" customWidth="1"/><col min="4" max="4" width="24" customWidth="1"/><col min="5" max="5" width="20" customWidth="1"/><col min="6" max="7" width="12" customWidth="1"/><col min="8" max="10" width="13" customWidth="1"/></cols><sheetData>${sheetRows.join("")}</sheetData><autoFilter ref="A8:J${8+bodyCount}"/><mergeCells count="4"><mergeCell ref="A4:J4"/><mergeCell ref="H1:H2"/><mergeCell ref="B6:C6"/><mergeCell ref="E6:G6"/></mergeCells><pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+
+  let cols='<col min="1" max="1" width="14" customWidth="1"/><col min="2" max="3" width="14" customWidth="1"/><col min="4" max="4" width="24" customWidth="1"/><col min="5" max="5" width="20" customWidth="1"/><col min="6" max="7" width="12" customWidth="1"/><col min="8" max="10" width="13" customWidth="1"/>';
+  if(includeHighpass)cols+='<col min="11" max="11" width="13" customWidth="1"/>';
+  if(includeFuel){
+    const fuelCol=includeHighpass?12:11;
+    cols+=`<col min="${fuelCol}" max="${fuelCol}" width="13" customWidth="1"/>`;
+  }
+
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols>${cols}</cols><sheetData>${sheetRows.join("")}</sheetData><autoFilter ref="A8:${lastCol}${8+bodyCount}"/><mergeCells count="4"><mergeCell ref="A4:${lastCol}4"/><mergeCell ref="${approvalStartCol}1:${approvalStartCol}2"/><mergeCell ref="B6:C6"/><mergeCell ref="E6:G6"/></mergeCells><pageMargins left="0.2" right="0.2" top="0.35" bottom="0.35" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
   const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="18"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><name val="Malgun Gothic"/></font><font><sz val="10"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf fontId="2" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
   return zipStore([
     {name:"[Content_Types].xml",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`},
@@ -1375,11 +1470,26 @@ function buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName=""){
     {name:"xl/worksheets/sheet1.xml",data:sheet}
   ]);
 }
-window.downloadReport=async function(){
-  const month=document.getElementById("reportMonth").value;
-  const vehicleId=document.getElementById("reportVehicle").value;
+window.downloadReport=function(){
+  const month=document.getElementById("reportMonth")?.value;
+  const vehicleId=document.getElementById("reportVehicle")?.value;
   if(!month||!vehicleId)return toast("대상월과 차량을 선택해주세요.");
-
+  showAdminModal(`<div class="admin-modal-head"><div><span class="modal-kicker">EXCEL 다운로드</span><h2>추가 내역을 선택하세요</h2><p>기본 운행일지 양식은 그대로 유지됩니다. 필요한 비용 항목만 운행거리 오른쪽에 추가합니다.</p></div><button class="modal-close" onclick="closeAdminModal()" aria-label="닫기">×</button></div>
+    <div class="report-export-options">
+      <label class="report-export-option"><input id="exportHighpass" type="checkbox"><span><strong>하이패스</strong><small>하이패스 비용 열을 추가합니다.</small></span></label>
+      <label class="report-export-option"><input id="exportFuel" type="checkbox"><span><strong>주유</strong><small>주유 비용 열을 추가합니다.</small></span></label>
+    </div>
+    <div class="modal-note">아무 항목도 선택하지 않으면 기존 10개 열의 기본 운행일지로 다운로드됩니다.</div>
+    <div class="modal-actions"><button class="btn light" onclick="closeAdminModal()">취소</button><button class="btn primary" onclick="downloadReportWithOptions()">Excel 다운로드</button></div>`);
+}
+window.downloadReportWithOptions=async function(){
+  const month=document.getElementById("reportMonth")?.value;
+  const vehicleId=document.getElementById("reportVehicle")?.value;
+  const includeHighpass=document.getElementById("exportHighpass")?.checked===true;
+  const includeFuel=document.getElementById("exportFuel")?.checked===true;
+  if(!month||!vehicleId)return toast("대상월과 차량을 선택해주세요.");
+  const button=document.querySelector('[onclick="downloadReportWithOptions()"]');
+  if(button){button.disabled=true;button.textContent="파일 생성 중...";}
   try{
     let rows=[],members={},purposes={},vehicle=null,facilityName="";
     if(state.admin.profile.role==="superadmin"){
@@ -1405,16 +1515,21 @@ window.downloadReport=async function(){
       if(aStart!==bStart)return aStart-bStart;
       return String(a.id||"").localeCompare(String(b.id||""));
     });
-    const bytes=buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName);
+    const bytes=buildMonthlyXlsx(month,rows,vehicle,members,purposes,facilityName,{includeHighpass,includeFuel});
     const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
     a.download=`차량운행일지_${vehicle?.plate_number||"차량"}_${month}.xlsx`;
     a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+    closeAdminModal();
     toast("수정 가능한 월간 Excel 운행일지를 다운로드했습니다.");
-  }catch(error){toast(error.message||"운행일지를 만들지 못했습니다.")}
+  }catch(error){
+    toast(error.message||"운행일지를 만들지 못했습니다.");
+    if(button){button.disabled=false;button.textContent="Excel 다운로드";}
+  }
 };
+
 (async()=>{
   try{
     if(qs.get("admin")==="1") await renderAdmin();
