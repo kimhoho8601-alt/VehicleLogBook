@@ -741,6 +741,153 @@ async function renderManager(table,title,key,label){
 
   adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 입력·수정·삭제한 내용은 해당 시설의 직원용 화면에 바로 반영됩니다.${table==="facility_members"?" 직원이 많으면 엑셀 양식으로 한 번에 등록할 수 있습니다.":""}</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form ${table==="facility_members"?"member-add-form":""}"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button>${memberBulk}</div></section>`);
 }
+async function renderMaintenanceHistory(){
+  adminFrame('<div class="empty">차량 정비 이력을 불러오는 중입니다.</div>');
+  try{
+    const isMaster=state.admin.profile.role==="superadmin";
+    let vehicles=state.admin.vehicles||[];
+    let facilities=[state.admin.facility];
+
+    if(isMaster){
+      const o=await getOverview(true);
+      vehicles=o.vehicles||[];
+      facilities=o.facilities||[];
+    }
+
+    const facilityMap=Object.fromEntries(facilities.map(f=>[f.id,f]));
+    const vehicleMap=Object.fromEntries(vehicles.map(v=>[v.id,v]));
+    const vehicleOptions=vehicles
+      .slice()
+      .sort((a,b)=>{
+        const af=facilityMap[a.facility_id]?.name||"";
+        const bf=facilityMap[b.facility_id]?.name||"";
+        return af.localeCompare(bf,"ko")||String(a.plate_number||"").localeCompare(String(b.plate_number||""),"ko");
+      })
+      .map(v=>{
+        const prefix=isMaster?(facilityMap[v.facility_id]?.name||"시설")+" · ":"";
+        return `<option value="${v.id}">${esc(prefix+(v.plate_number||"차량"))}</option>`;
+      }).join("");
+
+    const rows=(await restRequest("vehicle_maintenance?select=*&order=maintenance_date.desc,created_at.desc"))||[];
+    const totalCost=rows.reduce((sum,r)=>sum+Number(r.cost||0),0);
+    const list=rows.map(r=>{
+      const vehicle=vehicleMap[r.vehicle_id]||{};
+      const facility=facilityMap[r.facility_id]||{};
+      return `<tr>
+        ${isMaster?`<td><strong>${esc(facility.name||"시설")}</strong><small>${esc(facility.code||"")}</small></td>`:""}
+        <td><strong>${esc(vehicle.plate_number||"차량")}</strong></td>
+        <td>${esc(r.maintenance_date||"")}</td>
+        <td><strong>${esc(r.item||"")}</strong></td>
+        <td class="maintenance-cost">${Number(r.cost||0).toLocaleString()}원</td>
+        <td>${esc(r.note||"-")}</td>
+        <td><div class="row-actions"><button class="icon-btn" onclick="editMaintenance('${r.id}','${encodeURIComponent(r.item||"")}','${Number(r.cost||0)}','${encodeURIComponent(r.note||"")}')">수정</button><button class="icon-btn danger" onclick="removeMaintenance('${r.id}')">삭제</button></div></td>
+      </tr>`;
+    }).join("");
+
+    adminFrame(`<section class="card maintenance-card">
+      <div class="maintenance-head">
+        <div><h2>차량 정비 이력</h2><p>차량별 수리·정비 내역과 비용을 기록합니다. 최근 기록부터 표시됩니다.</p></div>
+        <div class="maintenance-total"><span>등록된 정비비</span><strong>${totalCost.toLocaleString()}원</strong></div>
+      </div>
+      <div class="maintenance-form">
+        <label class="field"><span>차량 번호</span><select id="maintenanceVehicle" class="select"><option value="">차량 선택</option>${vehicleOptions}</select></label>
+        <label class="field"><span>정비일</span><input id="maintenanceDate" class="input" type="date" value="${currentKstDate()}"></label>
+        <label class="field maintenance-item-field"><span>수리·정비 항목</span><input id="maintenanceItem" class="input" placeholder="예: 엔진오일 교환 / 타이어 교체"></label>
+        <label class="field"><span>비용 (원)</span><input id="maintenanceCost" class="input" type="number" min="0" step="1000" inputmode="numeric" placeholder="예: 85000"></label>
+        <label class="field maintenance-note-field"><span>비고 <em>선택</em></span><input id="maintenanceNote" class="input" placeholder="예: 정비소 / 다음 점검 시점"></label>
+        <button class="btn primary maintenance-add-btn" onclick="addMaintenance()">정비 이력 등록</button>
+      </div>
+      <div class="table-scroll">
+        <table class="admin-table maintenance-table">
+          <thead><tr>${isMaster?"<th>시설</th>":""}<th>차량</th><th>정비일</th><th>수리·정비 항목</th><th>비용</th><th>비고</th><th>관리</th></tr></thead>
+          <tbody>${list||`<tr><td colspan="${isMaster?7:6}">등록된 정비 이력이 없습니다.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`);
+  }catch(error){
+    adminFrame('<div class="empty">'+esc(error.message||"정비 이력을 불러오지 못했습니다.")+'</div>');
+  }
+}
+
+window.addMaintenance=async function(){
+  const vehicleId=document.getElementById("maintenanceVehicle")?.value;
+  const date=document.getElementById("maintenanceDate")?.value;
+  const item=document.getElementById("maintenanceItem")?.value.trim();
+  const costRaw=document.getElementById("maintenanceCost")?.value;
+  const note=document.getElementById("maintenanceNote")?.value.trim();
+  if(!vehicleId||!date||!item||costRaw==="")return toast("차량, 정비일, 수리 항목, 비용을 입력해주세요.");
+  const cost=Number(costRaw);
+  if(!Number.isFinite(cost)||cost<0)return toast("정비 비용을 확인해주세요.");
+
+  let vehicles=state.admin.vehicles||[];
+  if(state.admin.profile.role==="superadmin"){
+    const o=await getOverview(false);
+    vehicles=o.vehicles||[];
+  }
+  const vehicle=vehicles.find(v=>v.id===vehicleId);
+  if(!vehicle)return toast("차량 정보를 찾을 수 없습니다.");
+
+  const button=document.querySelector('[onclick="addMaintenance()"]');
+  if(button){button.disabled=true;button.textContent="등록 중...";}
+  try{
+    await restRequest("vehicle_maintenance",{
+      method:"POST",
+      headers:{"Prefer":"return=minimal"},
+      body:JSON.stringify({
+        facility_id:vehicle.facility_id||state.admin.facility.id,
+        vehicle_id:vehicleId,
+        maintenance_date:date,
+        item,
+        cost,
+        note:note||null,
+        created_by:state.admin.profile.id
+      })
+    });
+    toast("정비 이력을 등록했습니다.");
+    await renderMaintenanceHistory();
+  }catch(error){
+    toast(error.message||"정비 이력을 등록하지 못했습니다.");
+    if(button){button.disabled=false;button.textContent="정비 이력 등록";}
+  }
+}
+
+window.editMaintenance=async function(id,encodedItem,currentCost,encodedNote){
+  const currentItem=decodeURIComponent(encodedItem||"");
+  const currentNote=decodeURIComponent(encodedNote||"");
+  const item=prompt("수리·정비 항목을 입력해주세요.",currentItem);
+  if(item===null)return;
+  const costText=prompt("비용(원)을 입력해주세요.",String(currentCost||0));
+  if(costText===null)return;
+  const note=prompt("비고를 입력해주세요. 없으면 비워두세요.",currentNote);
+  if(note===null)return;
+  const cost=Number(costText);
+  if(!item.trim()||!Number.isFinite(cost)||cost<0)return toast("수리 항목과 비용을 확인해주세요.");
+  try{
+    await restRequest("vehicle_maintenance?id="+eq(id),{
+      method:"PATCH",
+      headers:{"Prefer":"return=minimal"},
+      body:JSON.stringify({
+        item:item.trim(),
+        cost,
+        note:note.trim()||null,
+        updated_at:new Date().toISOString()
+      })
+    });
+    toast("정비 이력을 수정했습니다.");
+    await renderMaintenanceHistory();
+  }catch(error){toast(error.message||"정비 이력을 수정하지 못했습니다.")}
+}
+
+window.removeMaintenance=async function(id){
+  if(!confirm("이 정비 이력을 삭제할까요?"))return;
+  try{
+    await restRequest("vehicle_maintenance?id="+eq(id),{method:"DELETE"});
+    toast("정비 이력을 삭제했습니다.");
+    await renderMaintenanceHistory();
+  }catch(error){toast(error.message||"정비 이력을 삭제하지 못했습니다.")}
+}
+
+
 window.addItem=async function(table,key){
   const value=document.getElementById("newItem").value.trim();
   if(!value)return toast("입력값을 확인해주세요.");
