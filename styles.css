@@ -1407,3 +1407,153 @@ h1,h2,h3,p{word-break:keep-all}
   }
   .report-export-options{grid-template-columns:1fr}
 }
+
+
+/* 차량 운행 실적 / 정비 이력 */
+.vehicle-manager-head,
+.maintenance-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:22px;
+  margin-bottom:14px;
+}
+.vehicle-manager-head h2,
+.maintenance-head h2{
+  margin:0 0 5px;
+}
+.vehicle-manager-head p,
+.maintenance-head p{
+  margin:0;
+}
+.vehicle-metric-month{
+  flex:0 0 190px;
+  display:grid;
+  gap:6px;
+}
+.vehicle-metric-month span{
+  font-size:11px;
+  font-weight:900;
+  color:#75676b;
+}
+.vehicle-metric-month .input{
+  min-height:42px;
+  padding:8px 10px;
+}
+.vehicle-usage-table{
+  min-width:930px;
+}
+.vehicle-usage-table th{
+  white-space:nowrap;
+}
+.usage-metric{
+  min-width:118px;
+}
+.usage-metric strong{
+  display:block;
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+}
+.usage-metric small{
+  display:block;
+  margin-top:4px;
+  color:#897a7e;
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+.maintenance-card{
+  overflow:visible;
+}
+.maintenance-total{
+  flex:0 0 auto;
+  min-width:160px;
+  padding:11px 14px;
+  border:1px solid #eadde0;
+  border-radius:13px;
+  background:#fff8fa;
+  text-align:right;
+}
+.maintenance-total span{
+  display:block;
+  color:#8a787d;
+  font-size:10px;
+  font-weight:800;
+}
+.maintenance-total strong{
+  display:block;
+  margin-top:3px;
+  color:var(--red);
+  font-size:18px;
+  font-variant-numeric:tabular-nums;
+}
+.maintenance-form{
+  display:grid;
+  grid-template-columns:minmax(170px,1.15fr) minmax(150px,.8fr) minmax(220px,1.4fr) minmax(150px,.8fr);
+  gap:10px;
+  align-items:end;
+  margin:18px 0 20px;
+  padding:16px;
+  border:1px solid #eee2e5;
+  border-radius:16px;
+  background:#fcfafb;
+}
+.maintenance-form .field{
+  margin:0;
+}
+.maintenance-note-field{
+  grid-column:1 / span 3;
+}
+.maintenance-add-btn{
+  width:100%;
+  margin:0;
+  min-height:48px;
+}
+.maintenance-table{
+  min-width:900px;
+}
+.maintenance-table td,
+.maintenance-table th{
+  vertical-align:middle;
+}
+.maintenance-cost{
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+@media(max-width:900px){
+  .vehicle-manager-head,
+  .maintenance-head{
+    flex-direction:column;
+    gap:12px;
+  }
+  .vehicle-metric-month{
+    width:100%;
+    max-width:240px;
+  }
+  .maintenance-total{
+    width:100%;
+    text-align:left;
+  }
+  .maintenance-form{
+    grid-template-columns:1fr 1fr;
+  }
+  .maintenance-note-field{
+    grid-column:1 / -1;
+  }
+}
+@media(max-width:620px){
+  .maintenance-form{
+    grid-template-columns:1fr;
+    padding:12px;
+  }
+  .maintenance-note-field{
+    grid-column:auto;
+  }
+  .vehicle-metric-month{
+    max-width:none;
+  }
+}
