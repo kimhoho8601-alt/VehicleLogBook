@@ -368,7 +368,7 @@ function adminFrame(content){
   const masterNav=isMaster?`<button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="accounts"?"active":""}" onclick="setAdminTab('accounts')">관리자 계정 등록</button>`:"";
   const resetButton=isMaster?`<button class="text-btn reset-data-btn" onclick="resetAllTripData()">운행 데이터 초기화</button>`:"";
   const facilityTools=!isMaster?`<button class="text-btn share-staff-btn" onclick="openFacilityShare()">직원 공유 링크</button><button class="text-btn" onclick="openOwnPasswordChange()">비밀번호 변경</button>`:"";
-  app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${isMaster?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}${facilityTools}${resetButton}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${masterNav}</nav><div id="adminContent">${content}</div></main>`;
+  app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${isMaster?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}${facilityTools}${resetButton}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="maintenance"?"active":""}" onclick="setAdminTab('maintenance')">정비 이력</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${masterNav}</nav><div id="adminContent">${content}</div></main>`;
 }
 window.setAdminTab=function(tab){state.adminTab=tab;renderAdminHome()}
 window.adminLogout=async function(){await signOut();state.admin=null;renderLogin()}
@@ -559,6 +559,7 @@ async function renderAdminHome(){
   }
   if(state.adminTab==="dashboard")return renderDashboard();
   if(state.adminTab==="vehicles")return state.admin.profile.role==="superadmin"?renderGlobalManager("vehicles"):renderManager("vehicles","차량 관리","plate_number","차량번호");
+  if(state.adminTab==="maintenance")return renderMaintenanceHistory();
   if(state.adminTab==="members")return state.admin.profile.role==="superadmin"?renderGlobalManager("members"):renderManager("facility_members","직원 관리","name","직원명");
   if(state.adminTab==="purposes")return state.admin.profile.role==="superadmin"?renderGlobalPurposeManager():renderPurposeReadOnly();
   if(state.adminTab==="report")return renderReport();
@@ -588,6 +589,40 @@ async function renderDashboard(){
   adminFrame(`<section class="stats"><div class="stat"><span>등록 차량</span><strong>${state.admin.vehicles.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>등록 직원</span><strong>${state.admin.members.filter(x=>x.is_active).length}</strong></div><div class="stat"><span>현재 운행 중</span><strong>${(active||[]).length}</strong></div></section><section class="card"><h2>현재 운행</h2><p>직원 화면의 운행 상태와 실시간으로 동일하게 반영됩니다.</p><div>${(active||[]).map(x=>`<div class="trip-row"><strong>${esc(vm[x.vehicle_id]||"차량")} · ${esc(mm[x.driver_id]||"운행자")}</strong><small>${fmtTime(x.start_at)} 출발 · ${esc(x.destination||"")}</small></div>`).join("")||'<div class="empty" style="margin-top:14px">현재 운행 중인 차량이 없습니다.</div>'}</div></section>`);
 }
 
+function currentKstMonth(){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit"}).formatToParts(new Date());
+  const m=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return m.year+"-"+m.month;
+}
+function currentKstDate(){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+  const d=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return d.year+"-"+d.month+"-"+d.day;
+}
+function formatUsageMinutes(value){
+  const minutes=Math.max(0,Math.round(Number(value)||0));
+  const hours=Math.floor(minutes/60);
+  const rest=minutes%60;
+  if(hours&&rest)return hours.toLocaleString()+"시간 "+rest+"분";
+  if(hours)return hours.toLocaleString()+"시간";
+  return rest+"분";
+}
+function usageMetricMarkup(metric,scope){
+  const minutes=scope==="month"?metric?.month_minutes:metric?.total_minutes;
+  const distance=scope==="month"?metric?.month_distance:metric?.total_distance;
+  return `<div class="usage-metric"><strong>${formatUsageMinutes(minutes)}</strong><small>${Number(distance||0).toLocaleString()} km</small></div>`;
+}
+async function loadVehicleUsageMetrics(month){
+  const rows=await restRequest("rpc/get_vehicle_usage_metrics",{method:"POST",body:JSON.stringify({p_month:month})});
+  return Object.fromEntries((rows||[]).map(r=>[r.vehicle_id,r]));
+}
+window.changeVehicleMetricMonth=function(value){
+  if(!/^\d{4}-\d{2}$/.test(value||""))return;
+  state.vehicleMetricMonth=value;
+  state.adminTab="vehicles";
+  renderAdminHome();
+}
+
 const globalManagerConfig={
   vehicles:{title:"전체 시설 차량",table:"vehicles",key:"plate_number",label:"차량번호"},
   members:{title:"전체 시설 직원",table:"facility_members",key:"name",label:"직원명"},
@@ -609,6 +644,10 @@ async function renderGlobalManager(type){
     const facilityOptions=(o.facilities||[]).map(f=>`<option value="${f.id}">${esc(f.name)} (${esc(f.code)})</option>`).join("");
     const odometerMap=o.vehicleOdometers||{};
     const activeVehicleIds=new Set((o.activeTrips||[]).map(t=>t.vehicle_id));
+    const metricMonth=state.vehicleMetricMonth||currentKstMonth();
+    const metricMap=type==="vehicles"?await loadVehicleUsageMetrics(metricMonth):{};
+    const monthLabel=Number(metricMonth.split("-")[1])+"월";
+
     const body=rows.map(r=>{
       const f=facilityMap[r.facility_id]||{};
       const value=r[cfg.key]||"";
@@ -617,16 +656,20 @@ async function renderGlobalManager(type){
       const odometerCell=type==="vehicles"
         ?`<td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td>`
         :"";
-      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td>${odometerCell}<td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
+      const usageCells=type==="vehicles"
+        ?`<td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td>`
+        :"";
+      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td>${odometerCell}${usageCells}<td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
 
     const memberBulk=type==="members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(true)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(true)">양식으로 첨부하기</button>`:"";
     const odometerHead=type==="vehicles"?"<th>누적 키로수</th>":"";
-    const colCount=type==="vehicles"?5:4;
-    adminFrame(`<section class="card"><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 누적 키로수는 가장 최근에 종료된 운행의 도착 키로수를 표시합니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p><div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}<th>관리</th></tr></thead><tbody>${body||`<tr><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr>`}</tbody></table></div></section>`);
+    const usageHead=type==="vehicles"?`<th>${monthLabel} 운행</th><th>전체 누적</th>`:"";
+    const colCount=type==="vehicles"?7:4;
+    const monthControl=type==="vehicles"?`<label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label>`:"";
+    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 월별 운행시간·주행거리와 전체 누적 실적을 함께 확인할 수 있습니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p></div>${monthControl}</div><div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table vehicle-usage-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}${usageHead}<th>관리</th></tr></thead><tbody>${body||`<tr><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr>`}</tbody></table></div></section>`);
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
 }
-
 async function renderGlobalPurposeManager(){
   adminFrame('<div class="empty">공통 운행목적을 불러오는 중입니다.</div>');
   try{
@@ -666,144 +709,38 @@ async function renderManager(table,title,key,label){
   const memberBulk=table==="facility_members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(false)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(false)">양식으로 첨부하기</button>`:"";
 
   if(table==="vehicles"){
-    adminFrame('<div class="empty">차량 누적 키로수를 확인하는 중입니다.</div>');
+    adminFrame('<div class="empty">차량 운행 실적을 확인하는 중입니다.</div>');
     let odometerMap={};
     let activeVehicleIds=new Set();
+    const metricMonth=state.vehicleMetricMonth||currentKstMonth();
+    const monthLabel=Number(metricMonth.split("-")[1])+"월";
+    let metricMap={};
     try{
-      const [odometerRows,activeTrips]=await Promise.all([
+      const [odometerRows,activeTrips,metrics]=await Promise.all([
         Promise.all(rows.map(async vehicle=>{
           const result=await restRequest("trips?select=vehicle_id,end_odometer,end_at&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicle.id)+"&status=eq.ended&end_odometer=not.is.null&order=end_at.desc&limit=1");
           return result?.[0]||null;
         })),
-        restRequest("trips?select=vehicle_id&facility_id="+eq(state.admin.facility.id)+"&status=eq.active")
+        restRequest("trips?select=vehicle_id&facility_id="+eq(state.admin.facility.id)+"&status=eq.active"),
+        loadVehicleUsageMetrics(metricMonth)
       ]);
       odometerMap=Object.fromEntries(odometerRows.filter(Boolean).map(t=>[t.vehicle_id,t.end_odometer]));
       activeVehicleIds=new Set((activeTrips||[]).map(t=>t.vehicle_id));
+      metricMap=metrics;
     }catch(error){
-      console.warn("vehicle odometer lookup failed",error);
+      console.warn("vehicle usage lookup failed",error);
     }
 
     const body=rows.map(r=>{
       const odometer=odometerMap[r.id];
-      return `<tr><td><strong>${esc(r[key])}</strong>${r.label?`<small>${esc(r.label)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></td></tr>`;
+      return `<tr><td><strong>${esc(r[key])}</strong>${r.label?`<small>${esc(r.label)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td><td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
-    adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 누적 키로수는 가장 최근에 종료된 운행의 도착 키로수이며, 현재 운행 중인 차량은 직전 종료 기록 기준으로 표시됩니다.</p><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="4">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
+    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 월별 운행시간·주행거리와 전체 누적 실적을 확인할 수 있습니다. 누적 키로수는 가장 최근 종료 기록 기준입니다.</p></div><label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label></div><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table vehicle-usage-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>${monthLabel} 운행</th><th>전체 누적</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="6">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
     return;
   }
 
   adminFrame(`<section class="card"><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 항목만 표시됩니다. 입력·수정·삭제한 내용은 해당 시설의 직원용 화면에 바로 반영됩니다.${table==="facility_members"?" 직원이 많으면 엑셀 양식으로 한 번에 등록할 수 있습니다.":""}</p><div style="margin-top:12px">${rows.map(r=>`<div class="manager-row"><div><strong>${esc(r[key])}</strong><br><small>${r.is_active?"사용 중":"사용 안 함"}</small></div><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></div>`).join("")||'<div class="empty">등록된 항목이 없습니다.</div>'}</div><div class="inline-form ${table==="facility_members"?"member-add-form":""}"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button>${memberBulk}</div></section>`);
 }
-
-function getMemberUploadFacility(isGlobal){
-  if(!isGlobal)return {id:state.admin.facility.id,name:state.admin.facility.name,code:state.admin.facility.code};
-  const facilityId=document.getElementById("globalFacility")?.value;
-  if(!facilityId){toast("직원을 등록할 시설을 먼저 선택해주세요.");return null}
-  const facility=state.overview?.facilities?.find(f=>f.id===facilityId);
-  return facility?{id:facility.id,name:facility.name,code:facility.code}:{id:facilityId,name:"선택 시설",code:""};
-}
-
-function safeFileName(value){
-  return String(value||"시설").replace(/[\\/:*?"<>|]/g,"_").trim()||"시설";
-}
-
-let xlsxLoaderPromise=null;
-function ensureXlsxLibrary(){
-  if(window.XLSX)return Promise.resolve(window.XLSX);
-  if(xlsxLoaderPromise)return xlsxLoaderPromise;
-  const sources=["https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js","https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"];
-  xlsxLoaderPromise=new Promise((resolve,reject)=>{
-    let index=0;
-    const loadNext=()=>{
-      if(index>=sources.length){xlsxLoaderPromise=null;reject(new Error("엑셀 파일 처리 모듈을 불러오지 못했습니다."));return}
-      const script=document.createElement("script");
-      script.src=sources[index++];
-      script.async=true;
-      script.onload=()=>{if(window.XLSX)resolve(window.XLSX);else{script.remove();loadNext()}};
-      script.onerror=()=>{script.remove();loadNext()};
-      document.head.appendChild(script);
-    };
-    loadNext();
-  });
-  return xlsxLoaderPromise;
-}
-
-window.downloadMemberTemplate=async function(isGlobal=false){
-  const facility=getMemberUploadFacility(Boolean(isGlobal));
-  if(!facility)return;
-  try{
-    const XLSX=await ensureXlsxLibrary();
-    const rows=[["직원명","입력 안내"],["",facility.name+" 직원 목록"],["","A열에 직원명을 한 행에 한 명씩 입력한 뒤 저장해주세요."]];
-    for(let i=0;i<50;i++)rows.push(["",""]);
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws["!cols"]=[{wch:24},{wch:54}];
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,"직원업로드");
-    XLSX.writeFile(wb,"직원업로드양식_"+safeFileName(facility.name)+".xlsx");
-    toast("직원 업로드 양식을 다운로드했습니다.");
-  }catch(error){toast(error.message||"업로드 양식을 만들지 못했습니다.")}
-}
-
-async function importMemberWorkbook(file,facility,isGlobal){
-  const XLSX=await ensureXlsxLibrary();
-  const data=await file.arrayBuffer();
-  const wb=XLSX.read(data,{type:"array"});
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  if(!ws)throw new Error("첫 번째 시트를 읽을 수 없습니다.");
-  const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
-  if(!rows.length)throw new Error("업로드할 직원명이 없습니다.");
-  const header=(rows[0]||[]).map(v=>String(v||"").trim());
-  const nameCol=header.findIndex(v=>["직원명","이름","성명"].includes(v));
-  if(nameCol<0)throw new Error("양식의 직원명 열을 확인해주세요.");
-  const rawNames=rows.slice(1).map(r=>String((r||[])[nameCol]||"").trim()).filter(Boolean);
-  if(!rawNames.length)throw new Error("직원명을 입력한 뒤 다시 첨부해주세요.");
-  const uniqueNames=[...new Set(rawNames)];
-  let existing=[];
-  if(isGlobal){
-    const o=await getOverview(true);
-    existing=(o.members||[]).filter(m=>m.facility_id===facility.id);
-  }else{
-    existing=state.admin.members||[];
-  }
-  const existingNames=new Set(existing.map(m=>String(m.name||"").trim()));
-  const newNames=uniqueNames.filter(name=>!existingNames.has(name));
-  const skipped=rawNames.length-newNames.length;
-  if(!newNames.length){toast("새로 등록할 직원이 없습니다. 기존 직원명과 중복되는지 확인해주세요.");return}
-  let message=facility.name+"에 직원 "+newNames.length+"명을 등록할까요?";
-  if(skipped>0)message+="\n중복 또는 반복 입력 "+skipped+"건은 제외됩니다.";
-  if(!confirm(message))return;
-  const maxSort=existing.reduce((m,x)=>Math.max(m,Number(x.sort_order)||0),0);
-  const payload=newNames.map((name,i)=>({facility_id:facility.id,name,is_active:true,sort_order:maxSort+i+1}));
-  await restRequest("facility_members",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(payload)});
-  if(isGlobal){
-    state.overview=null;
-    await renderGlobalManager("members");
-  }else{
-    await loadAdminContext();
-    await renderAdminHome();
-  }
-  toast("직원 "+newNames.length+"명을 등록했습니다.");
-}
-
-window.uploadMemberTemplate=function(isGlobal=false){
-  const facility=getMemberUploadFacility(Boolean(isGlobal));
-  if(!facility)return;
-  const input=document.createElement("input");
-  input.type="file";
-  input.accept=".xlsx,.xls";
-  input.style.display="none";
-  input.onchange=async()=>{
-    const file=input.files?.[0];
-    if(!file){input.remove();return}
-    try{
-      toast("엑셀 파일을 확인하고 있습니다.");
-      await importMemberWorkbook(file,facility,Boolean(isGlobal));
-    }catch(error){toast(error.message||"직원 엑셀을 불러오지 못했습니다.")}
-    finally{input.remove()}
-  };
-  document.body.appendChild(input);
-  input.click();
-}
-
 window.addItem=async function(table,key){
   const value=document.getElementById("newItem").value.trim();
   if(!value)return toast("입력값을 확인해주세요.");
