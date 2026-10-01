@@ -1253,3 +1253,23 @@ h1,h2,h3,p{word-break:keep-all}
 @media(max-width:620px){
   .account-edit-grid{grid-template-columns:1fr}
 }
+
+.odometer-cell{
+  min-width:128px;
+}
+.odometer-cell strong{
+  display:block;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.odometer-cell small{
+  display:block;
+  margin-top:3px;
+  color:#9a7b83;
+  font-size:10px;
+  white-space:nowrap;
+}
+.vehicle-admin-table th:nth-child(3),
+.vehicle-admin-table td:nth-child(3){
+  text-align:right;
+}
