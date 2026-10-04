@@ -696,6 +696,10 @@ async function renderGlobalManager(type){
     else if(type==="members")rows=o.members||[];
     else rows=await restRequest("trip_purposes?select=*&order=name.asc");
 
+    const facilities=[...(o.facilities||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ko"));
+    const savedFilter=state.globalFacilityFilters?.[type]||"";
+    const selectedFilter=facilities.some(f=>f.id===savedFilter)?savedFilter:"";
+    const filterOptions=facilities.map(f=>`<option value="${esc(f.id)}" ${f.id===selectedFilter?'selected':''}>${esc(f.name)} (${esc(f.code)})</option>`).join("");
     const facilityOptions=(o.facilities||[]).map(f=>`<option value="${f.id}">${esc(f.name)} (${esc(f.code)})</option>`).join("");
     const odometerMap=o.vehicleOdometers||{};
     const activeVehicleIds=new Set((o.activeTrips||[]).map(t=>t.vehicle_id));
@@ -714,7 +718,7 @@ async function renderGlobalManager(type){
       const usageCells=type==="vehicles"
         ?`<td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td>`
         :"";
-      return `<tr><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td>${odometerCell}${usageCells}<td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
+      return `<tr data-facility-id="${esc(r.facility_id||'')}"><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td>${odometerCell}${usageCells}<td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
 
     const memberBulk=type==="members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(true)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(true)">양식으로 첨부하기</button>`:"";
@@ -722,8 +726,28 @@ async function renderGlobalManager(type){
     const usageHead=type==="vehicles"?`<th>${monthLabel} 운행</th><th>전체 누적</th>`:"";
     const colCount=type==="vehicles"?7:4;
     const monthControl=type==="vehicles"?`<label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label>`:"";
-    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 월별 운행시간·주행거리와 전체 누적 실적을 함께 확인할 수 있습니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p></div>${monthControl}</div><div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table vehicle-usage-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}${usageHead}<th>관리</th></tr></thead><tbody>${body||`<tr><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr>`}</tbody></table></div></section>`);
+    const facilityFilter=(type==="vehicles"||type==="members")?`<div class="global-facility-filter"><label><span>시설별 조회</span><select id="globalFacilityFilter" class="select" onchange="filterGlobalFacility('${type}',this.value)"><option value="">전체 시설</option>${filterOptions}</select></label><span id="globalFacilityCount" class="global-facility-count" role="status"></span></div>`:"";
+    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 월별 운행시간·주행거리와 전체 누적 실적을 함께 확인할 수 있습니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p></div>${monthControl}</div>${facilityFilter}<div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table vehicle-usage-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}${usageHead}<th>관리</th></tr></thead><tbody id="globalManagerRows">${body}<tr id="globalFacilityEmpty" ${rows.length?'hidden':''}><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr></tbody></table></div></section>`);
+    if(type==="vehicles"||type==="members")filterGlobalFacility(type,selectedFilter);
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
+}
+window.filterGlobalFacility=function(type,facilityId){
+  if(state.admin?.profile?.role!=="superadmin"||!["vehicles","members"].includes(type))return;
+  state.globalFacilityFilters=state.globalFacilityFilters||{};
+  state.globalFacilityFilters[type]=facilityId||"";
+  const rows=[...document.querySelectorAll("#globalManagerRows tr[data-facility-id]")];
+  let visible=0;
+  rows.forEach(row=>{
+    row.hidden=Boolean(facilityId&&row.dataset.facilityId!==facilityId);
+    if(!row.hidden)visible++;
+  });
+  const count=document.getElementById("globalFacilityCount");
+  if(count)count.textContent="조회 "+visible+(type==="vehicles"?"대":"명")+" / 전체 "+rows.length+(type==="vehicles"?"대":"명");
+  const empty=document.getElementById("globalFacilityEmpty");
+  if(empty){
+    empty.hidden=visible>0;
+    empty.querySelector("td").textContent=facilityId?"선택한 시설에 등록된 데이터가 없습니다.":"등록된 데이터가 없습니다.";
+  }
 }
 async function renderGlobalPurposeManager(){
   adminFrame('<div class="empty">공통 운행목적을 불러오는 중입니다.</div>');
