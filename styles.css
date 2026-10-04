@@ -1631,3 +1631,15 @@ h1,h2,h3,p{word-break:keep-all}
     width:100%;
   }
 }
+
+/* Facility staff search: keep touch targets and selected checkboxes stable. */
+.staff-member-search{display:block;margin:10px 0 3px}
+.staff-member-search .input{width:100%;min-height:48px;font-size:16px}
+.staff-driver-option{width:100%;border:0;background:#fff;text-align:left;font:inherit;color:var(--ink);min-height:48px}
+.staff-driver-option[aria-pressed="true"]{background:var(--red-pale);color:var(--red);font-weight:700}
+.staff-driver-option[aria-pressed="true"]::after{content:"✓";margin-left:auto}
+.staff-passenger-option{min-height:48px}
+.staff-passenger-option[hidden],.staff-search-empty[hidden]{display:none}
+.staff-search-empty{padding:12px 8px;margin:0;color:var(--muted);font-size:13px}
+.staff-passenger-select #driverSummary.has-selection{color:var(--ink);font-weight:700}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

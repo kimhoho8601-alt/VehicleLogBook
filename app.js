@@ -47,9 +47,9 @@ function renderVehicles(){
 window.selectVehicle=function(id){state.selectedVehicle=id;state.passengers.clear();const v=state.data.vehicles.find(x=>x.id===id);const a=state.data.active?.[id];if(a)return renderEnd(v,a);renderStart(v)}
 function renderStart(v){
   const sortedMembers=[...(state.data.members||[])].sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ko"));
-  const members=sortedMembers.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
+  const driverOptions=sortedMembers.map(m=>`<button type="button" class="staff-passenger-option staff-driver-option" data-member-name="${esc(m.name)}" data-member-id="${esc(m.id)}" aria-pressed="false" onclick="selectStaffDriver(this)"><span>${esc(m.name)}</span></button>`).join("");
   const purposes=state.data.purposes.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
-  const passengerOptions=sortedMembers.map(m=>`<label class="staff-passenger-option"><input type="checkbox" value="${m.id}" onchange="togglePassengerDropdown(this)"><span>${esc(m.name)}</span></label>`).join("");
+  const passengerOptions=sortedMembers.map(m=>`<label class="staff-passenger-option" data-member-name="${esc(m.name)}"><input type="checkbox" value="${esc(m.id)}" onchange="togglePassengerDropdown(this)"><span>${esc(m.name)}</span></label>`).join("");
   userShell(`<button class="back mobile-back" onclick="renderVehicles()">← 차량 다시 선택</button>
   <section class="selected-vehicle-card"><div><span>선택 차량</span><strong>${esc(v.plate_number)}</strong><small>${esc(v.label||state.data.facility.name)}</small></div><span class="status-chip ok">운행 가능</span></section>
   <section class="safety-check-card"><div class="safety-check-title"><span class="safety-number">20</span><div><strong>출발 전 20초 안전확인</strong><p>차량을 움직이기 전에 아래 3가지만 확인해주세요.</p></div></div>
@@ -58,16 +58,28 @@ function renderStart(v){
     <label class="check-row"><input class="safety-check" type="checkbox" onchange="updateSafetyReady()"><span><strong>안전운전 준비</strong><small>주행 중 휴대전화 조작 없이 교통법규를 준수하겠습니다.</small></span></label>
   </section>
   <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 정보</span><h2>출발 기록 입력</h2></div><span class="required-note">필수 입력</span></div>
-    <label class="field"><span>운행자</span><select id="driver" class="select" onchange="updateSafetyReady()"><option value="">운행자를 선택하세요</option>${members}</select></label>
+    <div class="field"><span id="driverFieldLabel">운행자</span>
+      <input id="driver" type="hidden" value="">
+      <details class="staff-passenger-select" id="staffDriverSelect">
+        <summary aria-labelledby="driverFieldLabel driverSummary"><span id="driverSummary">운행자를 선택하세요</span><span class="staff-select-chevron" aria-hidden="true">⌄</span></summary>
+        <div class="staff-passenger-menu">
+          <label class="staff-member-search"><span class="sr-only">운행자 이름 검색</span><input id="driverSearch" class="input" type="search" placeholder="이름 또는 초성 검색 (예: 김, ㄱㅎ)" autocomplete="off" oninput="filterStaffMembers('driver',this.value)" aria-controls="driverSearchOptions"></label>
+          <div id="driverSearchOptions" class="staff-passenger-options">${driverOptions}</div>
+          <p id="driverSearchEmpty" class="staff-search-empty" role="status" ${sortedMembers.length?'hidden':''}>${sortedMembers.length?'검색 결과가 없습니다.':'등록된 직원이 없습니다.'}</p>
+        </div>
+      </details>
+    </div>
     <div class="field"><span>동승자 <em>선택</em></span>
       <details class="staff-passenger-select" id="staffPassengerSelect">
         <summary><span id="passengerSummary">동승자를 선택하세요</span><span class="staff-select-chevron" aria-hidden="true">⌄</span></summary>
         <div class="staff-passenger-menu">
           <div class="staff-passenger-menu-head"><strong>동승자 선택</strong><div class="staff-passenger-menu-actions"><button class="passenger-clear-btn" type="button" onclick="clearPassengerDropdown()">선택 해제</button><button id="passengerDoneButton" class="passenger-done-btn" type="button" onclick="finishPassengerDropdown()">선택 완료</button></div></div>
-          <div class="staff-passenger-options">${passengerOptions||'<span class="field-help">등록된 직원이 없습니다.</span>'}</div>
+          <label class="staff-member-search"><span class="sr-only">동승자 이름 검색</span><input id="passengerSearch" class="input" type="search" placeholder="이름 또는 초성 검색 (예: 김, ㄱㅎ)" autocomplete="off" oninput="filterStaffMembers('passenger',this.value)" aria-controls="passengerSearchOptions"></label>
+          <div id="passengerSearchOptions" class="staff-passenger-options">${passengerOptions}</div>
+          <p id="passengerSearchEmpty" class="staff-search-empty" role="status" ${sortedMembers.length?'hidden':''}>${sortedMembers.length?'검색 결과가 없습니다.':'등록된 직원이 없습니다.'}</p>
         </div>
       </details>
-      <small class="field-help staff-sort-help">이름은 가나다순으로 정렬됩니다.</small>
+      <small class="field-help staff-sort-help">이름·초성으로 검색할 수 있습니다. 선택한 동승자는 검색해도 유지됩니다.</small>
     </div>
     <label class="field"><span>운행목적</span><select id="purpose" class="select" onchange="updateSafetyReady()"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
     <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정" oninput="updateSafetyReady()"></label>
@@ -75,6 +87,49 @@ function renderStart(v){
     ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 실제 계기판 값이 더 크면 수정해주세요.</p>`:""}
   </div>
   <div class="start-action-bar"><button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>안전 체크를 완료해주세요</button></div>`,state.data.facility.name);
+  updateSafetyReady();
+}
+function matchesStaffName(name,query){
+  const normalize=value=>String(value||"").normalize("NFC").replace(/\s/g,"").toLowerCase();
+  const text=[...normalize(name)],search=[...normalize(query)];
+  const initials="ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+  if(!search.length)return true;
+  return text.some((_,start)=>search.every((char,offset)=>{
+    const candidate=text[start+offset];
+    if(candidate===undefined)return false;
+    if(char===candidate)return true;
+    const code=candidate.charCodeAt(0)-0xac00;
+    return code>=0&&code<11172&&char===initials[Math.floor(code/588)];
+  }));
+}
+window.filterStaffMembers=function(kind,query){
+  const options=document.getElementById(kind+"SearchOptions");
+  if(!options)return;
+  let count=0;
+  options.querySelectorAll("[data-member-name]").forEach(option=>{
+    const match=matchesStaffName(option.dataset.memberName,query);
+    option.hidden=!match;
+    if(match)count++;
+  });
+  const empty=document.getElementById(kind+"SearchEmpty");
+  if(empty){
+    empty.hidden=count>0;
+    empty.textContent=options.children.length?"검색 결과가 없습니다.":"등록된 직원이 없습니다.";
+  }
+}
+window.selectStaffDriver=function(button){
+  const id=button.dataset.memberId;
+  const member=state.data?.members?.find(m=>m.id===id);
+  if(!member)return;
+  document.getElementById("driver").value=id;
+  const summary=document.getElementById("driverSummary");
+  summary.textContent=member.name;
+  summary.classList.add("has-selection");
+  document.querySelectorAll(".staff-driver-option").forEach(option=>option.setAttribute("aria-pressed",String(option.dataset.memberId===id)));
+  const picker=document.getElementById("staffDriverSelect");
+  picker.open=false;
+  document.getElementById("driverSearch").blur();
+  picker.querySelector("summary").focus();
   updateSafetyReady();
 }
 function updatePassengerSummary(){
