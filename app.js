@@ -238,8 +238,12 @@ window.toggleEndExpense=function(type){
   }
 }
 window.endTrip=async function(id){
-  const endOdometer=Number(document.getElementById("endKm")?.value);
-  if(!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");
+  const endKmInput=document.getElementById("endKm");
+  const endKmRaw=endKmInput?.value?.trim()||"";
+  const endOdometer=Number(endKmRaw);
+  if(!endKmRaw||!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");
+  const startOdometer=Number(endKmInput.min);
+  if(endOdometer<0||(Number.isFinite(startOdometer)&&endOdometer<startOdometer))return toast("도착 키로수는 출발 키로수보다 작을 수 없습니다.");
   const highpassSelected=document.getElementById("highpassExpenseTab")?.getAttribute("aria-pressed")==="true";
   const fuelSelected=document.getElementById("fuelExpenseTab")?.getAttribute("aria-pressed")==="true";
   const highpassRaw=document.getElementById("highpassCost")?.value??"";
@@ -848,7 +852,9 @@ async function renderMaintenanceHistory(){
     }).join("");
 
     const allRows=(await restRequest("vehicle_maintenance?select=*&order=maintenance_date.desc,created_at.desc"))||[];
-    const filterVehicleId=state.maintenanceFilterVehicle||"";
+    const savedFilter=state.maintenanceFilterVehicle||"";
+    const filterVehicleId=vehicleMap[savedFilter]?savedFilter:"";
+    state.maintenanceFilterVehicle=filterVehicleId;
     const rows=filterVehicleId?allRows.filter(r=>r.vehicle_id===filterVehicleId):allRows;
     const totalCost=rows.reduce((sum,r)=>sum+Number(r.cost||0),0);
     const selectedVehicle=filterVehicleId?vehicleMap[filterVehicleId]:null;
@@ -871,7 +877,7 @@ async function renderMaintenanceHistory(){
         <td><strong>${esc(r.item||"")}</strong></td>
         <td class="maintenance-cost">${Number(r.cost||0).toLocaleString()}원</td>
         <td>${esc(r.note||"-")}</td>
-        <td><div class="row-actions"><button class="icon-btn" onclick="editMaintenance('${r.id}','${encodeURIComponent(r.item||"")}','${Number(r.cost||0)}','${encodeURIComponent(r.note||"")}')">수정</button><button class="icon-btn danger" onclick="removeMaintenance('${r.id}')">삭제</button></div></td>
+        <td><div class="row-actions"><button class="icon-btn" onclick="editMaintenance('${r.id}','${encodeURIComponent(r.item||"").replace(/'/g,"%27")}','${Number(r.cost||0)}','${encodeURIComponent(r.note||"").replace(/'/g,"%27")}')">수정</button><button class="icon-btn danger" onclick="removeMaintenance('${r.id}')">삭제</button></div></td>
       </tr>`;
     }).join("");
 
