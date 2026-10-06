@@ -885,7 +885,7 @@ async function renderMaintenanceHistory(){
       </tr>`;
     }).join("");
 
-    state.maintenanceExportData={rows,allRows,vehicles,facilities,filterVehicleId,isMaster};
+    state.maintenanceExportData={rows,allRows,vehicles,facilities,members:isMaster?((await getOverview(true)).members||[]):(state.admin.members||[]),filterVehicleId,isMaster};
 
     adminFrame(`<section class="card maintenance-card">
       <div class="maintenance-head">
@@ -934,23 +934,81 @@ window.setMaintenanceFilter=function(vehicleId){
   renderMaintenanceHistory();
 }
 
-function buildMaintenanceXlsx(rows,vehicleMap,facilityMap,{isMaster=false,scopeLabel="전체 차량",totalCost=0}={}){
+function buildMaintenanceXlsx(rows,vehicleMap,facilityMap,{isMaster=false,scopeLabel="전체 차량",totalCost=0,selectedVehicle=null,memberMap={}}={}){
   const headers=isMaster
     ?["시설","차량","정비일","수리·정비 항목","비용(원)","비고"]
     :["차량","정비일","수리·정비 항목","비용(원)","비고"];
   const lastCol=xlsxCol(headers.length);
   const sheetRows=[];
+  const merges=[`A1:${lastCol}1`];
   const add=(n,cells,h)=>sheetRows.push(`<row r="${n}"${h?` ht="${h}" customHeight="1"`:""}>${cells.join("")}</row>`);
+  const textValue=value=>value===null||value===undefined||value===""?"-":String(value);
+  const moneyValue=value=>value===null||value===undefined||value===""?"-":Number(value).toLocaleString("ko-KR")+"원";
+  const ownershipLabels={purchase:"구입",rent:"렌트",lease:"리스",donation:"기증",other:"기타"};
+  const fuelLabels={gasoline:"휘발유",diesel:"경유",lpg:"LPG",hybrid:"하이브리드",electric:"전기",hydrogen:"수소",other:"기타"};
+  const statusLabels={in_service:"사용 중",maintenance:"정비 중",suspended:"운행 중지",disposed:"처분"};
 
   add(1,[xlsxText("A1","차량 정비 이력",1)],32);
   add(2,[xlsxText("A2","조회 범위",2),xlsxText("B2",scopeLabel,3)],24);
   add(3,[xlsxText("A3","정비비 합계",2),xlsxNum("B3",totalCost,3)],24);
-  add(4,[],8);
-  add(5,headers.map((h,i)=>xlsxText(xlsxCol(i+1)+"5",h,2)),25);
+
+  let headerRow=5;
+  if(selectedVehicle){
+    const facility=facilityMap[selectedVehicle.facility_id]||{};
+    const manager=memberMap[selectedVehicle.manager_member_id]||{};
+    const rightValueEnd=lastCol;
+    const infoRows=[
+      ["시설",facility.name||"","차량번호",selectedVehicle.plate_number||""],
+      ["차종",selectedVehicle.vehicle_type||"","차명",selectedVehicle.model_name||""],
+      ["연식",selectedVehicle.model_year?`${selectedVehicle.model_year}년식`:"","취득일 / 사용 시작일",selectedVehicle.acquired_on||""],
+      ["연료 종류",fuelLabels[selectedVehicle.fuel_type]||selectedVehicle.fuel_type||"","소유방식",ownershipLabels[selectedVehicle.ownership_type]||selectedVehicle.ownership_type||""],
+      ["관리 담당자",manager.name||"","차량 상태",statusLabels[selectedVehicle.operating_status]||(selectedVehicle.is_active===false?"운행 중지":"사용 중")]
+    ];
+    if(selectedVehicle.ownership_type==="purchase"){
+      infoRows.push(["취득금액",moneyValue(selectedVehicle.purchase_price),"",""]);
+    }else if(selectedVehicle.ownership_type==="rent"||selectedVehicle.ownership_type==="lease"){
+      infoRows.push(
+        ["계약업체",selectedVehicle.contract_company||"","월 이용료",moneyValue(selectedVehicle.monthly_fee)],
+        ["계약 시작일",selectedVehicle.contract_start_on||"","계약 종료일",selectedVehicle.contract_end_on||""],
+        ["연간 약정거리",selectedVehicle.annual_mileage_limit!=null?Number(selectedVehicle.annual_mileage_limit).toLocaleString("ko-KR")+" km":"","",""]
+      );
+    }else if(selectedVehicle.ownership_type==="donation"){
+      infoRows.push(
+        ["기증기관",selectedVehicle.donor_name||"","기증일",selectedVehicle.donated_on||""],
+        ["평가금액",moneyValue(selectedVehicle.appraised_value),"",""]
+      );
+    }
+    if(selectedVehicle.insurance_expires_on||selectedVehicle.inspection_due_on||selectedVehicle.next_service_on||selectedVehicle.next_service_odometer!=null){
+      infoRows.push(
+        ["보험 만료일",selectedVehicle.insurance_expires_on||"","다음 정기검사 기한",selectedVehicle.inspection_due_on||""],
+        ["다음 정비 예정일",selectedVehicle.next_service_on||"","다음 정비 예정 키로수",selectedVehicle.next_service_odometer!=null?Number(selectedVehicle.next_service_odometer).toLocaleString("ko-KR")+" km":""]
+      );
+    }
+
+    add(4,[],8);
+    add(5,[xlsxText("A5","차량 기본정보",7)],25);
+    merges.push(`A5:${lastCol}5`);
+    let rowNo=6;
+    for(const [leftLabel,leftValue,rightLabel,rightValue] of infoRows){
+      const cells=[
+        xlsxText("A"+rowNo,leftLabel,2),
+        xlsxText("B"+rowNo,textValue(leftValue),4),
+        xlsxText("C"+rowNo,rightLabel||"",2),
+        xlsxText("D"+rowNo,rightLabel?textValue(rightValue):"",4)
+      ];
+      add(rowNo,cells,22);
+      if(headers.length>4)merges.push(`D${rowNo}:${rightValueEnd}${rowNo}`);
+      rowNo++;
+    }
+    add(rowNo,[],8);
+    headerRow=rowNo+1;
+  }
+
+  add(headerRow,headers.map((h,i)=>xlsxText(xlsxCol(i+1)+headerRow,h,2)),25);
 
   const bodyCount=Math.max(20,rows.length);
   for(let i=0;i<bodyCount;i++){
-    const n=6+i;
+    const n=headerRow+1+i;
     const r=rows[i];
     if(!r){
       add(n,headers.map((_,j)=>xlsxText(xlsxCol(j+1)+n,"",3)),22);
@@ -972,12 +1030,13 @@ function buildMaintenanceXlsx(rows,vehicleMap,facilityMap,{isMaster=false,scopeL
   let cols="";
   for(let i=1;i<=headers.length;i++){
     const width=isMaster
-      ?[24,15,14,28,15,30][i-1]
-      :[15,14,28,15,34][i-1];
+      ?[24,18,18,28,15,30][i-1]
+      :[18,18,28,15,34][i-1];
     cols+=`<col min="${i}" max="${i}" width="${width}" customWidth="1"/>`;
   }
 
-  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols>${cols}</cols><sheetData>${sheetRows.join("")}</sheetData><autoFilter ref="A5:${lastCol}${5+bodyCount}"/><mergeCells count="1"><mergeCell ref="A1:${lastCol}1"/></mergeCells><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
+  const mergeXml=merges.map(ref=>`<mergeCell ref="${ref}"/>`).join("");
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><cols>${cols}</cols><sheetData>${sheetRows.join("")}</sheetData><autoFilter ref="A${headerRow}:${lastCol}${headerRow+bodyCount}"/><mergeCells count="${merges.length}">${mergeXml}</mergeCells><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`;
   const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="10"/><name val="Malgun Gothic"/></font><font><b/><sz val="18"/><name val="Malgun Gothic"/></font><font><b/><sz val="10"/><name val="Malgun Gothic"/></font><font><sz val="10"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf fontId="2" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="3" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf fontId="2" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
   return zipStore([
@@ -1000,10 +1059,13 @@ window.downloadMaintenanceExcel=function(){
     ?(data.isMaster?(facilityMap[selectedVehicle.facility_id]?.name||"시설")+" · ":"")+(selectedVehicle.plate_number||"차량")
     :"전체 차량";
   const totalCost=(data.rows||[]).reduce((sum,r)=>sum+Number(r.cost||0),0);
+  const memberMap=Object.fromEntries((data.members||[]).map(m=>[m.id,m]));
   const bytes=buildMaintenanceXlsx(data.rows||[],vehicleMap,facilityMap,{
     isMaster:data.isMaster,
     scopeLabel,
-    totalCost
+    totalCost,
+    selectedVehicle,
+    memberMap
   });
   const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
   const a=document.createElement("a");
