@@ -993,11 +993,12 @@ function buildMaintenanceXlsx(rows,vehicleMap,facilityMap,{isMaster=false,scopeL
       const cells=[
         xlsxText("A"+rowNo,leftLabel,2),
         xlsxText("B"+rowNo,textValue(leftValue),4),
-        xlsxText("C"+rowNo,rightLabel||"",2),
-        xlsxText("D"+rowNo,rightLabel?textValue(rightValue):"",4)
+        xlsxText("D"+rowNo,rightLabel||"",2),
+        xlsxText("E"+rowNo,rightLabel?textValue(rightValue):"",4)
       ];
-      add(rowNo,cells,22);
-      if(headers.length>4)merges.push(`D${rowNo}:${rightValueEnd}${rowNo}`);
+      add(rowNo,cells,24);
+      merges.push(`B${rowNo}:C${rowNo}`);
+      if(headers.length>5)merges.push(`E${rowNo}:F${rowNo}`);
       rowNo++;
     }
     add(rowNo,[],8);
@@ -1030,8 +1031,8 @@ function buildMaintenanceXlsx(rows,vehicleMap,facilityMap,{isMaster=false,scopeL
   let cols="";
   for(let i=1;i<=headers.length;i++){
     const width=isMaster
-      ?[24,18,18,28,15,30][i-1]
-      :[18,18,28,15,34][i-1];
+      ?[20,18,14,22,16,30][i-1]
+      :[18,18,26,20,34][i-1];
     cols+=`<col min="${i}" max="${i}" width="${width}" customWidth="1"/>`;
   }
 
