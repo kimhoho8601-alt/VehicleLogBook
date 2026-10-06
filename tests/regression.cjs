@@ -9,14 +9,15 @@ const context=vm.createContext({console,URLSearchParams,TextEncoder,TextDecoder,
   location:{search:''},localStorage:{getItem(){return null}},setTimeout(){},
   document:{getElementById:id=>elements[id]},fetch(){throw Error('Live network forbidden');}});
 context.window=context;
+vm.runInContext(fs.readFileSync(path.join(root,'vehicle-info.js'),'utf8'),context);
 vm.runInContext(fs.readFileSync(path.join(root,'app.js'),'utf8'),context);
 const run=code=>vm.runInContext(code,context);
 const json=value=>JSON.parse(JSON.stringify(value));
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 assert(!html.includes('\\n'));
 const scripts=[...html.matchAll(/<script src="([^"]+)"/g)].map(m=>m[1]);
-assert.equal(scripts.length,2);
-assert(scripts[0].includes('qrcode')&&scripts[1].includes('app.js'));
+assert.equal(scripts.length,3);
+assert(scripts[0].includes('qrcode')&&scripts[1].includes('vehicle-info.js')&&scripts[2].includes('app.js'));
 assert(fs.existsSync(path.join(root,scripts[0])));
 vm.runInContext(fs.readFileSync(path.join(root,scripts[0]),'utf8'),context);
 assert.equal(typeof context.QRCode.toCanvas,'function');

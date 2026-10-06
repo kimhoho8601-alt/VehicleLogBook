@@ -15,6 +15,18 @@
   --shadow:0 14px 38px rgba(69,20,31,.08);
   --shadow-soft:0 7px 24px rgba(69,20,31,.055);
 }
+.admin-modal.vehicle-info-modal{width:min(820px,100%)}
+.vehicle-info-section{border:0;border-top:1px solid var(--line);margin:18px 0 0;padding:16px 0 0;min-width:0}
+.vehicle-info-section h3,.vehicle-info-section legend{font-size:15px;font-weight:800;margin:0 0 12px;padding:0;color:var(--ink)}
+.vehicle-info-section legend{padding-top:18px}
+.vehicle-info-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.vehicle-info-grid .field{margin:0;min-width:0}
+.vehicle-info-grid .field small{color:var(--muted);font-size:11px;line-height:1.6}
+.vehicle-info-grid .field em{font-style:normal;color:var(--red);font-size:11px}
+.vehicle-schedule summary{cursor:pointer;font-size:15px;font-weight:800;padding-bottom:14px}
+.vehicle-schedule summary span{font-size:11px;font-weight:400;color:var(--muted);margin-left:6px}
+.vehicle-info-section[hidden]{display:none}
+@media(max-width:560px){.vehicle-info-grid{grid-template-columns:1fr;gap:12px}.vehicle-info-modal{padding:18px}}
 *{box-sizing:border-box}
 html{background:#fff;scroll-behavior:smooth}
 body{

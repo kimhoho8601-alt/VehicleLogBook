@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const root=path.join(__dirname,'..');
+const state={admin:{facility:{id:'f1'}}};
+const ctx=vm.createContext({state,window:{},esc:v=>String(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))});
+vm.runInContext(fs.readFileSync(path.join(root,'vehicle-info.js'),'utf8'),ctx);
+const run=code=>vm.runInContext(code,ctx);
+ctx.editor={id:'',vehicle:{},master:true,facilities:[{id:'f1'},{id:'f2'}],members:[{id:'m1',facility_id:'f1',name:'시설1 직원',is_active:true},{id:'m2',facility_id:'f2',name:'시설2 직원',is_active:true},{id:'inactive',facility_id:'f1',name:'퇴사 직원',is_active:false}]};
+ctx.values={facility_id:'f1',plate_number:' 12가3456 ',operating_status:'in_service',ownership_type:'purchase',purchase_price:'30000000',manager_member_id:'m1',model_year:'2023',vehicle_type:'승용',model_name:'아반떼',acquired_on:'2023-05-01',fuel_type:'gasoline'};
+const build=()=>run('buildVehicleInfoPayload(values,editor)');
+let payload=build();assert.equal(payload.plate_number,'12가3456');assert.equal(payload.purchase_price,30000000);assert.equal(payload.manager_member_id,'m1');assert.equal(payload.monthly_fee,null);
+assert(!('seat_capacity' in payload)&&!('note' in payload));
+for(const bad of [{manager_member_id:'m2'},{manager_member_id:'inactive'},{purchase_price:'-1'},{model_year:'2023.5'},{model_year:'1899'},{acquired_on:'2026-02-30'},{facility_id:'unknown'},{operating_status:'__proto__'}]){
+  const old={...ctx.values};Object.assign(ctx.values,bad);assert.throws(build);ctx.values=old;
+}
+ctx.values.ownership_type='rent';ctx.values.monthly_fee='500000';ctx.values.contract_company='테스트렌트';ctx.values.contract_start_on='2026-10-01';ctx.values.contract_end_on='2027-10-01';ctx.values.annual_mileage_limit='20000';
+payload=build();assert.equal(payload.purchase_price,null);assert.equal(payload.monthly_fee,500000);assert.equal(payload.annual_mileage_limit,20000);
+ctx.values.contract_end_on='2025-10-01';assert.throws(build);ctx.values.contract_end_on='2027-10-01';
+ctx.values.ownership_type='donation';ctx.values.donor_name='기증기관';ctx.values.donated_on='2026-10-01';ctx.values.appraised_value='12000000';
+payload=build();assert.equal(payload.contract_company,null);assert.equal(payload.monthly_fee,null);assert.equal(payload.appraised_value,12000000);
+ctx.editor.id='v1';ctx.editor.vehicle={facility_id:'f1',manager_member_id:'inactive'};ctx.values.manager_member_id='inactive';ctx.values.facility_id='f2';
+payload=build();assert.equal(payload.facility_id,'f1');assert.equal(payload.manager_member_id,'inactive');
+ctx.editor.master=false;ctx.editor.id='';ctx.editor.vehicle={};ctx.values.manager_member_id='m1';
+payload=build();assert.equal(payload.facility_id,'f1');
+const options=run("vehicleManagerOptions(editor.members,'f1')");assert(options.includes('시설1 직원'));assert(!options.includes('시설2 직원'));assert(!options.includes('퇴사 직원'));
+const summary=run("vehicleSummaryMarkup({facility_id:'f1',manager_member_id:'m1',vehicle_type:'<차종>',model_name:'모델',model_year:2023,ownership_type:'purchase'},editor.members)");
+assert(summary.includes('&lt;차종&gt;'));assert(summary.includes('담당: 시설1 직원'));assert(summary.includes('구입'));
+console.log('PASS: vehicle fields, ownership sections, numeric/date validation, facility-scoped managers, inactive manager retention and safe summaries');

@@ -722,7 +722,7 @@ async function renderGlobalManager(type){
       const usageCells=type==="vehicles"
         ?`<td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td>`
         :"";
-      return `<tr data-facility-id="${esc(r.facility_id||'')}"><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td>${odometerCell}${usageCells}<td><div class="row-actions"><button class="icon-btn" onclick="editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
+      return `<tr data-facility-id="${esc(r.facility_id||'')}"><td><strong>${esc(f.name||"미지정")}</strong><small>${esc(f.code||"")}</small></td><td><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:""}${type==="vehicles"?vehicleSummaryMarkup(r,o.members||[]):""}</td><td>${type==="vehicles"?vehicleStatusText(r):(r.is_active?"사용 중":"사용 안 함")}</td>${odometerCell}${usageCells}<td><div class="row-actions"><button class="icon-btn" onclick="${type==="vehicles"?`openVehicleEditor('${r.id}')`:`editItem('${cfg.table}','${r.id}','${cfg.key}','${encodeURIComponent(value)}')`}">수정</button><button class="icon-btn danger" onclick="removeItem('${cfg.table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
 
     const memberBulk=type==="members"?`<button class="btn bulk-btn" onclick="downloadMemberTemplate(true)">업로드 양식 다운로드</button><button class="btn bulk-btn emphasis" onclick="uploadMemberTemplate(true)">양식으로 첨부하기</button>`:"";
@@ -731,7 +731,7 @@ async function renderGlobalManager(type){
     const colCount=type==="vehicles"?7:4;
     const monthControl=type==="vehicles"?`<label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label>`:"";
     const facilityFilter=(type==="vehicles"||type==="members")?`<div class="global-facility-filter"><label><span>시설별 조회</span><select id="globalFacilityFilter" class="select" onchange="filterGlobalFacility('${type}',this.value)"><option value="">전체 시설</option>${filterOptions}</select></label><span id="globalFacilityCount" class="global-facility-count" role="status"></span></div>`:"";
-    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 월별 운행시간·주행거리와 전체 누적 실적을 함께 확인할 수 있습니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p></div>${monthControl}</div>${facilityFilter}<div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select><input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>${memberBulk}</div><div class="table-scroll"><table class="admin-table vehicle-usage-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}${usageHead}<th>관리</th></tr></thead><tbody id="globalManagerRows">${body}<tr id="globalFacilityEmpty" ${rows.length?'hidden':''}><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr></tbody></table></div></section>`);
+    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 월별 운행시간·주행거리와 전체 누적 실적을 함께 확인할 수 있습니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p></div>${monthControl}</div>${facilityFilter}<div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select>${type==="vehicles"?`<button class="btn primary" onclick="openVehicleEditor()">차량 등록</button>`:`<input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>`}${memberBulk}</div><div class="table-scroll"><table class="admin-table vehicle-usage-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}${usageHead}<th>관리</th></tr></thead><tbody id="globalManagerRows">${body}<tr id="globalFacilityEmpty" ${rows.length?'hidden':''}><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr></tbody></table></div></section>`);
     if(type==="vehicles"||type==="members")filterGlobalFacility(type,selectedFilter);
   }catch(error){adminFrame('<div class="empty">'+esc(error.message||"목록을 불러오지 못했습니다.")+'</div>')}
 }
@@ -816,9 +816,9 @@ async function renderManager(table,title,key,label){
 
     const body=rows.map(r=>{
       const odometer=odometerMap[r.id];
-      return `<tr><td><strong>${esc(r[key])}</strong>${r.label?`<small>${esc(r.label)}</small>`:""}</td><td>${r.is_active?"사용 중":"사용 안 함"}</td><td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td><td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td><td><div class="row-actions"><button class="icon-btn" onclick="editItem('${table}','${r.id}','${key}','${encodeURIComponent(r[key]||"")}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></td></tr>`;
+      return `<tr><td><strong>${esc(r[key])}</strong>${r.label?`<small>${esc(r.label)}</small>`:""}${vehicleSummaryMarkup(r,state.admin.members)}</td><td>${vehicleStatusText(r)}</td><td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td><td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td><td><div class="row-actions"><button class="icon-btn" onclick="openVehicleEditor('${r.id}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
-    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 월별 운행시간·주행거리와 전체 누적 실적을 확인할 수 있습니다. 누적 키로수는 가장 최근 종료 기록 기준입니다.</p></div><label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label></div><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table vehicle-usage-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>${monthLabel} 운행</th><th>전체 누적</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="6">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><input id="newItem" class="input" placeholder="${label} 입력"><button class="btn primary" onclick="addItem('${table}','${key}')">추가</button></div></section>`);
+    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 월별 운행시간·주행거리와 전체 누적 실적을 확인할 수 있습니다. 누적 키로수는 가장 최근 종료 기록 기준입니다.</p></div><label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label></div><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table vehicle-usage-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>${monthLabel} 운행</th><th>전체 누적</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="6">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><button class="btn primary" onclick="openVehicleEditor()">차량 등록</button></div></section>`);
     return;
   }
 
@@ -1202,6 +1202,7 @@ window.uploadMemberTemplate=function(isGlobal=false){
 }
 
 window.addItem=async function(table,key){
+  if(table==="vehicles")return openVehicleEditor();
   const value=document.getElementById("newItem").value.trim();
   if(!value)return toast("입력값을 확인해주세요.");
   const payload={facility_id:state.admin.facility.id,[key]:value,sort_order:managerData(table).length+1};
@@ -1214,6 +1215,7 @@ window.addItem=async function(table,key){
 }
 
 window.addGlobalItem=async function(type){
+  if(type==="vehicles")return openVehicleEditor();
   const cfg=globalManagerConfig[type];
   const facilityId=document.getElementById("globalFacility")?.value;
   const value=document.getElementById("globalValue")?.value.trim();
@@ -1227,6 +1229,7 @@ window.addGlobalItem=async function(type){
 }
 
 window.editItem=async function(table,id,key,encodedValue){
+  if(table==="vehicles")return openVehicleEditor(id);
   const current=decodeURIComponent(encodedValue||"");
   const next=prompt("수정할 값을 입력해주세요.",current);
   if(next===null)return;
