@@ -142,3 +142,65 @@ window.saveVehicleInfo=async function(){
     if(button){button.disabled=false;button.textContent=editor.id?'변경사항 저장':'차량 등록';}
   }
 };
+
+function getVehicleExportView(data,admin,facilityFilter=''){
+  if(!data||!admin||data.role!==admin.profile.role||data.adminId!==admin.profile.id||data.facilityId!==admin.facility.id)throw Error('차량 목록을 다시 불러온 뒤 다운로드해주세요.');
+  const master=admin.profile.role==='superadmin';
+  const facilityId=master?facilityFilter:admin.facility.id;
+  const facility=(data.facilities||[]).find(f=>f.id===facilityId);
+  if(facilityId&&!facility)throw Error('시설 목록을 다시 불러와주세요.');
+  const vehicles=(data.vehicles||[]).filter(v=>!facilityId||v.facility_id===facilityId);
+  const facilityMap=Object.fromEntries((data.facilities||[]).map(f=>[f.id,f]));
+  const rows=vehicles.map(v=>{
+    const f=facilityMap[v.facility_id]||{};
+    const manager=(data.members||[]).find(m=>m.id===v.manager_member_id&&m.facility_id===v.facility_id);
+    const metric=data.metricMap?.[v.id];
+    return {...v,facility_name:f.name||'',facility_code:f.code||'',manager_name:manager?.name||'',ownership_label:vehicleOwnershipLabels[v.ownership_type]||'',fuel_label:vehicleFuelLabels[v.fuel_type]||'',status_label:vehicleStatusText(v),odometer:data.odometerMap?.[v.id]??null,metric_month:data.month,month_minutes:data.metricMap?(metric?.month_minutes??0):null,month_distance:data.metricMap?(metric?.month_distance??0):null,total_minutes:data.metricMap?(metric?.total_minutes??0):null,total_distance:data.metricMap?(metric?.total_distance??0):null};
+  });
+  return {rows,scopeLabel:facility?facility.name:'전체 시설',month:data.month};
+}
+function buildVehicleXlsx(view){
+  const common=[['facility_name','시설명','text',24],['facility_code','시설코드','text',14],['plate_number','차량번호','text',16]];
+  const sheets=[{name:'차량 현황',columns:[...common,
+    ['vehicle_type','차종','text',14],['model_name','차명','text',20],['model_year','연식','number',10],['acquired_on','취득일 / 사용 시작일','date',22],['ownership_label','소유방식','text',12],['purchase_price','취득금액 (원)','number',20],['fuel_label','연료 종류','text',16],['manager_name','관리 담당자','text',16],['status_label','차량 상태','text',14],['odometer','누적 키로수 (km)','number',20],['metric_month','사용량 기준월','text',16],['month_minutes','월 운행시간 (분)','number',20],['month_distance','월 주행거리 (km)','number',20],['total_minutes','누적 운행시간 (분)','number',22],['total_distance','누적 주행거리 (km)','number',22]
+  ]},{name:'계약·관리 일정',columns:[...common,
+    ['contract_company','계약업체','text',24],['monthly_fee','월 이용료 (원)','number',20],['contract_start_on','계약 시작일','date',16],['contract_end_on','계약 종료일','date',16],['annual_mileage_limit','연간 약정거리 (km)','number',22],['donor_name','기증기관','text',24],['donated_on','기증일','date',16],['appraised_value','평가금액 (원)','number',20],['insurance_expires_on','보험 만료일','date',16],['inspection_due_on','정기검사 기한','date',18],['next_service_on','다음 정비 예정일','date',20],['next_service_odometer','다음 정비 키로수 (km)','number',26]
+  ]}];
+  const text=(ref,value,style=3)=>xlsxText(ref,String(value??'').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]/g,''),style);
+  const cell=(ref,value,type)=>{
+    if(value==null||value==='')return text(ref,'');
+    if(type==='date'){
+      const ms=Date.parse(value);
+      if(!Number.isFinite(ms))return text(ref,value);
+      const serial=Math.floor(ms/86400000)+25569-(ms<Date.UTC(1900,2,1)?1:0);
+      return xlsxNum(ref,serial,5);
+    }
+    return type==='number'?(Number.isFinite(Number(value))?xlsxNum(ref,value,4):text(ref,'')):text(ref,value);
+  };
+  const files=[];
+  sheets.forEach((sheet,i)=>{
+    const last=xlsxCol(sheet.columns.length),lastRow=Math.max(7,6+view.rows.length);
+    const rows=[`<row r="1" ht="32" customHeight="1">${text('A1',sheet.name,1)}</row>`,`<row r="2">${text('A2','조회 범위',2)}${text('B2',view.scopeLabel)}</row>`,`<row r="3">${text('A3','사용량 기준월',2)}${text('B3',view.month)}</row>`,`<row r="4">${text('A4','차량 수',2)}${xlsxNum('B4',view.rows.length,4)}</row>`,`<row r="6" ht="32" customHeight="1">${sheet.columns.map((c,j)=>text(xlsxCol(j+1)+'6',c[1],2)).join('')}</row>`];
+    view.rows.forEach((v,index)=>{const n=index+7;rows.push(`<row r="${n}" ht="26" customHeight="1">${sheet.columns.map((c,j)=>cell(xlsxCol(j+1)+n,v[c[0]],c[2])).join('')}</row>`)});
+    const cols=sheet.columns.map((c,j)=>`<col min="${j+1}" max="${j+1}" width="${c[3]}" customWidth="1"/>`).join('');
+    files.push({name:`xl/worksheets/sheet${i+1}.xml`,data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${last}${lastRow}"/><sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane xSplit="3" ySplit="6" topLeftCell="D7" activePane="bottomRight" state="frozen"/><selection pane="bottomRight" activeCell="D7" sqref="D7"/></sheetView></sheetViews><cols>${cols}</cols><sheetData>${rows.join('')}</sheetData><autoFilter ref="A6:${last}${lastRow}"/><mergeCells count="1"><mergeCell ref="A1:${last}1"/></mergeCells><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/></worksheet>`});
+  });
+  const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.##"/><numFmt numFmtId="165" formatCode="yyyy-mm-dd"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Malgun Gothic"/></font><font><b/><sz val="18"/><name val="Malgun Gothic"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Malgun Gothic"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD7002A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFEADFE2"/></left><right style="thin"><color rgb="FFEADFE2"/></right><top style="thin"><color rgb="FFEADFE2"/></top><bottom style="thin"><color rgb="FFEADFE2"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf fontId="1" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  return zipStore([
+    {name:'[Content_Types].xml',data:`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`},
+    {name:'_rels/.rels',data:'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:'xl/workbook.xml',data:`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${sheets.map((s,i)=>`<sheet name="${s.name}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels',data:`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`},
+    {name:'xl/styles.xml',data:styles},...files
+  ]);
+}
+window.downloadVehicleExcel=function(){
+  try{
+    const view=getVehicleExportView(state.vehicleExportData,state.admin,state.globalFacilityFilters?.vehicles||'');
+    if(!view.rows.length)return toast('선택한 조건에 등록된 차량이 없습니다.');
+    const bytes=buildVehicleXlsx(view),blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const link=document.createElement('a');link.href=URL.createObjectURL(blob);
+    link.download='차량현황_'+view.scopeLabel.replace(/[\\/:*?"<>|]/g,'_')+'_'+view.month+'.xlsx';
+    link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1500);toast('차량 현황 Excel을 다운로드했습니다.');
+  }catch(error){toast(error.message||'차량 현황 Excel을 만들지 못했습니다.')}
+};

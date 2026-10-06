@@ -16,6 +16,8 @@
   --shadow-soft:0 7px 24px rgba(69,20,31,.055);
 }
 .admin-modal.vehicle-info-modal{width:min(820px,100%)}
+.vehicle-list-actions{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.vehicle-list-actions .btn{width:auto;margin:0;white-space:nowrap}
 .vehicle-info-section{border:0;border-top:1px solid var(--line);margin:18px 0 0;padding:16px 0 0;min-width:0}
 .vehicle-info-section h3,.vehicle-info-section legend{font-size:15px;font-weight:800;margin:0 0 12px;padding:0;color:var(--ink)}
 .vehicle-info-section legend{padding-top:18px}

@@ -709,6 +709,7 @@ async function renderGlobalManager(type){
     const activeVehicleIds=new Set((o.activeTrips||[]).map(t=>t.vehicle_id));
     const metricMonth=state.vehicleMetricMonth||currentKstMonth();
     const metricMap=type==="vehicles"?await loadVehicleUsageMetrics(metricMonth):{};
+    if(type==="vehicles")state.vehicleExportData={vehicles:rows,members:o.members||[],facilities:o.facilities||[],metricMap,odometerMap,month:metricMonth,role:state.admin.profile.role,adminId:state.admin.profile.id,facilityId:state.admin.facility.id};
     const monthLabel=Number(metricMonth.split("-")[1])+"월";
 
     const body=rows.map(r=>{
@@ -729,7 +730,7 @@ async function renderGlobalManager(type){
     const odometerHead=type==="vehicles"?"<th>누적 키로수</th>":"";
     const usageHead=type==="vehicles"?`<th>${monthLabel} 운행</th><th>전체 누적</th>`:"";
     const colCount=type==="vehicles"?7:4;
-    const monthControl=type==="vehicles"?`<label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label>`:"";
+    const monthControl=type==="vehicles"?`<div class="vehicle-list-actions"><label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label><button class="btn dark" onclick="downloadVehicleExcel()">Excel 다운로드</button></div>`:"";
     const facilityFilter=(type==="vehicles"||type==="members")?`<div class="global-facility-filter"><label><span>시설별 조회</span><select id="globalFacilityFilter" class="select" onchange="filterGlobalFacility('${type}',this.value)"><option value="">전체 시설</option>${filterOptions}</select></label><span id="globalFacilityCount" class="global-facility-count" role="status"></span></div>`:"";
     adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${cfg.title}</h2><p>최고관리자는 관리자 계정에 등록된 모든 시설의 데이터를 조회·입력·수정·삭제할 수 있습니다.${type==="vehicles"?" 월별 운행시간·주행거리와 전체 누적 실적을 함께 확인할 수 있습니다.":""}${type==="members"?" 시설을 선택한 뒤 엑셀 양식으로 직원명을 일괄 등록할 수 있습니다.":""}</p></div>${monthControl}</div>${facilityFilter}<div class="global-add-form ${type==="members"?"global-member-add":""}"><select id="globalFacility" class="select"><option value="">시설 선택</option>${facilityOptions}</select>${type==="vehicles"?`<button class="btn primary" onclick="openVehicleEditor()">차량 등록</button>`:`<input id="globalValue" class="input" placeholder="${cfg.label} 입력"><button class="btn primary" onclick="addGlobalItem('${type}')">추가</button>`}${memberBulk}</div><div class="table-scroll"><table class="admin-table vehicle-usage-table"><thead><tr><th>시설명</th><th>${cfg.label}</th><th>상태</th>${odometerHead}${usageHead}<th>관리</th></tr></thead><tbody id="globalManagerRows">${body}<tr id="globalFacilityEmpty" ${rows.length?'hidden':''}><td colspan="${colCount}">등록된 데이터가 없습니다.</td></tr></tbody></table></div></section>`);
     if(type==="vehicles"||type==="members")filterGlobalFacility(type,selectedFilter);
@@ -798,6 +799,7 @@ async function renderManager(table,title,key,label){
     const metricMonth=state.vehicleMetricMonth||currentKstMonth();
     const monthLabel=Number(metricMonth.split("-")[1])+"월";
     let metricMap={};
+    let metricsAvailable=false;
     try{
       const [odometerRows,activeTrips,metrics]=await Promise.all([
         Promise.all(rows.map(async vehicle=>{
@@ -810,15 +812,17 @@ async function renderManager(table,title,key,label){
       odometerMap=Object.fromEntries(odometerRows.filter(Boolean).map(t=>[t.vehicle_id,t.end_odometer]));
       activeVehicleIds=new Set((activeTrips||[]).map(t=>t.vehicle_id));
       metricMap=metrics;
+      metricsAvailable=true;
     }catch(error){
       console.warn("vehicle usage lookup failed",error);
     }
 
+    state.vehicleExportData={vehicles:rows,members:state.admin.members||[],facilities:[state.admin.facility],metricMap:metricsAvailable?metricMap:null,odometerMap,month:metricMonth,role:state.admin.profile.role,adminId:state.admin.profile.id,facilityId:state.admin.facility.id};
     const body=rows.map(r=>{
       const odometer=odometerMap[r.id];
       return `<tr><td><strong>${esc(r[key])}</strong>${r.label?`<small>${esc(r.label)}</small>`:""}${vehicleSummaryMarkup(r,state.admin.members)}</td><td>${vehicleStatusText(r)}</td><td class="odometer-cell"><strong>${odometer!=null?Number(odometer).toLocaleString()+" km":"—"}</strong>${activeVehicleIds.has(r.id)?'<small>직전 운행 종료 기준</small>':""}</td><td>${usageMetricMarkup(metricMap[r.id],"month")}</td><td>${usageMetricMarkup(metricMap[r.id],"total")}</td><td><div class="row-actions"><button class="icon-btn" onclick="openVehicleEditor('${r.id}')">수정</button><button class="icon-btn danger" onclick="removeItem('${table}','${r.id}')">삭제</button></div></td></tr>`;
     }).join("");
-    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 월별 운행시간·주행거리와 전체 누적 실적을 확인할 수 있습니다. 누적 키로수는 가장 최근 종료 기록 기준입니다.</p></div><label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label></div><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table vehicle-usage-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>${monthLabel} 운행</th><th>전체 누적</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="6">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><button class="btn primary" onclick="openVehicleEditor()">차량 등록</button></div></section>`);
+    adminFrame(`<section class="card"><div class="vehicle-manager-head"><div><h2>${title}</h2><p>${esc(state.admin.facility.name)}에 등록된 차량만 표시됩니다. 월별 운행시간·주행거리와 전체 누적 실적을 확인할 수 있습니다. 누적 키로수는 가장 최근 종료 기록 기준입니다.</p></div><div class="vehicle-list-actions"><label class="vehicle-metric-month"><span>월 운행 기준</span><input class="input" type="month" value="${metricMonth}" onchange="changeVehicleMetricMonth(this.value)"></label><button class="btn dark" onclick="downloadVehicleExcel()">Excel 다운로드</button></div></div><div class="table-scroll" style="margin-top:12px"><table class="admin-table vehicle-admin-table vehicle-usage-table"><thead><tr><th>차량번호</th><th>상태</th><th>누적 키로수</th><th>${monthLabel} 운행</th><th>전체 누적</th><th>관리</th></tr></thead><tbody>${body||'<tr><td colspan="6">등록된 차량이 없습니다.</td></tr>'}</tbody></table></div><div class="inline-form"><button class="btn primary" onclick="openVehicleEditor()">차량 등록</button></div></section>`);
     return;
   }
 

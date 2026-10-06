@@ -96,6 +96,16 @@ const root=path.join(__dirname,'..');
       assert(await form.getByText('보험·검사·정비 일정',{exact:false}).count());
       assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
       await page.screenshot({path:`/tmp/vehicle-info-${master?'master':'mobile'}.png`});
+      await page.locator('.modal-close').click();
+      const download=page.waitForEvent('download');
+      await page.getByRole('button',{name:'Excel 다운로드',exact:true}).click();
+      await (await download).saveAs(`/tmp/vehicle-export-${master?'master':'facility'}.xlsx`);
+      if(master){
+        await page.locator('#globalFacilityFilter').selectOption('f2');
+        const filtered=page.waitForEvent('download');
+        await page.getByRole('button',{name:'Excel 다운로드',exact:true}).click();
+        await (await filtered).saveAs('/tmp/vehicle-export-filtered.xlsx');
+      }
       assert.deepEqual(errors,[]);
       console.log('PASS browser:',master?'MASTER desktop facility switching and donation':'facility mobile registration and editing');
       await context.close();
