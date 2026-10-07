@@ -87,7 +87,7 @@ function renderStart(v){
       <div class="odometer-field-head"><label for="startKm">출발 키로수 (km)</label>
         ${state.data.lastOdometer?.[v.id]!=null?`<label class="odometer-load-check"><input id="loadLastOdometer" type="checkbox" onchange="toggleLastOdometer(this,${Number(state.data.lastOdometer[v.id])})"><span>마지막 기록 불러오기</span></label>`:""}
       </div>
-      <input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="1" inputmode="numeric" value="" placeholder="예: 42351" oninput="syncLastOdometerCheck();updateSafetyReady()">
+      <input id="startKm" class="input" type="number" min="${Math.ceil(Number(state.data.lastOdometer?.[v.id]??0))}" step="1" inputmode="numeric" value="" placeholder="예: 42351" oninput="syncLastOdometerCheck();updateSafetyReady()">
     </div>
     ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 체크하면 자동으로 입력되며, 실제 계기판 값이 다르면 직접 입력해주세요.</p>`:""}
   </div>
@@ -169,7 +169,7 @@ window.finishPassengerDropdown=function(){
 window.toggleLastOdometer=function(checkbox,lastValue){
   const input=document.getElementById("startKm");
   if(!input)return;
-  input.value=checkbox.checked&&Number.isFinite(Number(lastValue))?String(Math.round(Number(lastValue))):"";
+  input.value=checkbox.checked&&Number.isFinite(Number(lastValue))?String(Math.ceil(Number(lastValue))):"";
   updateSafetyReady();
   if(!checkbox.checked)input.focus();
 }
@@ -220,7 +220,7 @@ function renderEnd(v,a){
   <section class="trip-live-banner"><div class="pulse-dot"></div><div><span>현재 운행 중</span><strong>${esc(v.plate_number)}</strong><p>${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</p></div></section>
   <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 종료</span><h2>도착 기록 입력</h2></div></div>
     <div class="trip-summary"><div><span>행선지</span><strong>${esc(a.destination||"-")}</strong></div><div><span>출발 키로수</span><strong>${Number(a.start_odometer).toLocaleString()} km</strong></div></div>
-    <label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="1" inputmode="numeric" placeholder="${Number(a.start_odometer).toLocaleString()} km 이상 입력"></label>
+    <label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Math.ceil(Number(a.start_odometer))}" step="1" inputmode="numeric" placeholder="${Number(a.start_odometer).toLocaleString()} km 이상 입력"></label>
     <p class="field-help">도착 키로수는 출발 키로수보다 작을 수 없습니다.</p>
 
     <section class="end-expense-section">
