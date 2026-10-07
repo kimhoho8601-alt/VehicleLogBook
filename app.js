@@ -83,8 +83,13 @@ function renderStart(v){
     </div>
     <label class="field"><span>운행목적</span><select id="purpose" class="select" onchange="updateSafetyReady()"><option value="">운행목적을 선택하세요</option>${purposes}</select></label>
     <label class="field"><span>행선지</span><input id="destination" class="input" placeholder="예: 서울중구청 / 방문 가정" oninput="updateSafetyReady()"></label>
-    <label class="field"><span>출발 키로수 (km)</span><input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="${state.data.lastOdometer?.[v.id]??""}" placeholder="예: 42351" oninput="updateSafetyReady()"></label>
-    ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 실제 계기판 값이 더 크면 수정해주세요.</p>`:""}
+    <div class="field">
+      <div class="odometer-field-head"><label for="startKm">출발 키로수 (km)</label>
+        ${state.data.lastOdometer?.[v.id]!=null?`<label class="odometer-load-check"><input id="loadLastOdometer" type="checkbox" onchange="toggleLastOdometer(this,${Number(state.data.lastOdometer[v.id])})"><span>마지막 기록 불러오기</span></label>`:""}
+      </div>
+      <input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="" placeholder="예: 42351" oninput="syncLastOdometerCheck();updateSafetyReady()">
+    </div>
+    ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 체크하면 자동으로 입력되며, 실제 계기판 값이 다르면 직접 입력해주세요.</p>`:""}
   </div>
   <div class="start-action-bar"><button id="startTripButton" class="btn primary" onclick="startTrip()" disabled>안전 체크를 완료해주세요</button></div>`,state.data.facility.name);
   updateSafetyReady();
@@ -160,6 +165,20 @@ window.finishPassengerDropdown=function(){
     picker.open=false;
     picker.querySelector("summary")?.focus();
   }
+}
+window.toggleLastOdometer=function(checkbox,lastValue){
+  const input=document.getElementById("startKm");
+  if(!input)return;
+  input.value=checkbox.checked&&Number.isFinite(Number(lastValue))?String(lastValue):"";
+  updateSafetyReady();
+  if(!checkbox.checked)input.focus();
+}
+window.syncLastOdometerCheck=function(){
+  const checkbox=document.getElementById("loadLastOdometer");
+  const input=document.getElementById("startKm");
+  if(!checkbox||!input||!checkbox.checked)return;
+  const last=state.data?.lastOdometer?.[state.selectedVehicle];
+  if(last==null||Number(input.value)!==Number(last))checkbox.checked=false;
 }
 window.updateSafetyReady=function(){
   const checks=[...document.querySelectorAll(".safety-check")];
