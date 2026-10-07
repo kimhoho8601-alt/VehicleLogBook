@@ -87,7 +87,7 @@ function renderStart(v){
       <div class="odometer-field-head"><label for="startKm">출발 키로수 (km)</label>
         ${state.data.lastOdometer?.[v.id]!=null?`<label class="odometer-load-check"><input id="loadLastOdometer" type="checkbox" onchange="toggleLastOdometer(this,${Number(state.data.lastOdometer[v.id])})"><span>마지막 기록 불러오기</span></label>`:""}
       </div>
-      <input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="0.1" inputmode="decimal" value="" placeholder="예: 42351" oninput="syncLastOdometerCheck();updateSafetyReady()">
+      <input id="startKm" class="input" type="number" min="${Number(state.data.lastOdometer?.[v.id]??0)}" step="1" inputmode="numeric" value="" placeholder="예: 42351" oninput="syncLastOdometerCheck();updateSafetyReady()">
     </div>
     ${state.data.lastOdometer?.[v.id]!=null?`<p class="field-help odometer-help">이 차량의 이전 최종 키로수는 <strong>${Number(state.data.lastOdometer[v.id]).toLocaleString()} km</strong>입니다. 체크하면 자동으로 입력되며, 실제 계기판 값이 다르면 직접 입력해주세요.</p>`:""}
   </div>
@@ -169,7 +169,7 @@ window.finishPassengerDropdown=function(){
 window.toggleLastOdometer=function(checkbox,lastValue){
   const input=document.getElementById("startKm");
   if(!input)return;
-  input.value=checkbox.checked&&Number.isFinite(Number(lastValue))?String(lastValue):"";
+  input.value=checkbox.checked&&Number.isFinite(Number(lastValue))?String(Math.round(Number(lastValue))):"";
   updateSafetyReady();
   if(!checkbox.checked)input.focus();
 }
@@ -188,7 +188,7 @@ window.updateSafetyReady=function(){
   const destination=document.getElementById("destination")?.value.trim()||"";
   const startRaw=document.getElementById("startKm")?.value;
   const startKm=Number(startRaw);
-  const formReady=Boolean(driver&&purpose&&destination&&startRaw!==""&&Number.isFinite(startKm));
+  const formReady=Boolean(driver&&purpose&&destination&&startRaw!==""&&Number.isFinite(startKm)&&Number.isInteger(startKm));
   const btn=document.getElementById("startTripButton");
   if(!btn)return;
   btn.disabled=!(safetyReady&&formReady);
@@ -203,7 +203,7 @@ window.startTrip=async function(){
   const purposeId=document.getElementById("purpose").value;
   const destination=document.getElementById("destination").value.trim();
   const startOdometer=Number(document.getElementById("startKm").value);
-  if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("운행 정보를 모두 입력해주세요.");
+  if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("운행 정보를 모두 입력해주세요.");\n  if(!Number.isInteger(startOdometer))return toast("출발 키로수는 소수점 없이 1km 단위로 입력해주세요.");
   const btn=document.getElementById("startTripButton");
   if(btn){btn.disabled=true;btn.textContent="운행 시작 중...";}
   try{
@@ -220,7 +220,7 @@ function renderEnd(v,a){
   <section class="trip-live-banner"><div class="pulse-dot"></div><div><span>현재 운행 중</span><strong>${esc(v.plate_number)}</strong><p>${esc(a.driver_name)} · ${fmtTime(a.start_at)} 출발</p></div></section>
   <div class="card form-card"><div class="card-head"><div><span class="card-kicker">운행 종료</span><h2>도착 기록 입력</h2></div></div>
     <div class="trip-summary"><div><span>행선지</span><strong>${esc(a.destination||"-")}</strong></div><div><span>출발 키로수</span><strong>${Number(a.start_odometer).toLocaleString()} km</strong></div></div>
-    <label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="0.1" inputmode="decimal" placeholder="${Number(a.start_odometer).toLocaleString()} km 이상 입력"></label>
+    <label class="field"><span>도착 키로수 (km)</span><input id="endKm" class="input" type="number" min="${Number(a.start_odometer)}" step="1" inputmode="numeric" placeholder="${Number(a.start_odometer).toLocaleString()} km 이상 입력"></label>
     <p class="field-help">도착 키로수는 출발 키로수보다 작을 수 없습니다.</p>
 
     <section class="end-expense-section">
@@ -260,7 +260,7 @@ window.endTrip=async function(id){
   const endKmInput=document.getElementById("endKm");
   const endKmRaw=endKmInput?.value?.trim()||"";
   const endOdometer=Number(endKmRaw);
-  if(!endKmRaw||!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");
+  if(!endKmRaw||!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");\n  if(!Number.isInteger(endOdometer))return toast("도착 키로수는 소수점 없이 1km 단위로 입력해주세요.");
   const startOdometer=Number(endKmInput.min);
   if(endOdometer<0||(Number.isFinite(startOdometer)&&endOdometer<startOdometer))return toast("도착 키로수는 출발 키로수보다 작을 수 없습니다.");
   const highpassSelected=document.getElementById("highpassExpenseTab")?.getAttribute("aria-pressed")==="true";
@@ -1535,8 +1535,8 @@ function reportRowHtml(r,i,data){
     <td><input class="cell-input edit-destination" value="${esc(r.destination||"")}" onchange="markReportRowChanged(this)"></td>
     <td><input class="cell-input edit-start-time" type="time" value="${startValue}" onchange="markReportRowChanged(this)"></td>
     <td><input class="cell-input edit-end-time" type="time" value="${endValue}" onchange="markReportRowChanged(this)"></td>
-    <td><input class="cell-input number-input edit-start-km" type="number" step="0.1" value="${r.start_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
-    <td><input class="cell-input number-input edit-end-km" type="number" step="0.1" value="${r.end_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
+    <td><input class="cell-input number-input edit-start-km" type="number" step="1" inputmode="numeric" value="${r.start_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
+    <td><input class="cell-input number-input edit-end-km" type="number" step="1" inputmode="numeric" value="${r.end_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
     <td class="distance-cell">${r.distance!=null?Number(r.distance).toLocaleString():"-"}</td>
     <td><input class="cell-input number-input edit-highpass-cost" type="number" min="0" step="100" value="${r.highpass_cost??""}" placeholder="-" oninput="markReportRowChanged(this)"></td>
     <td><input class="cell-input number-input edit-fuel-cost" type="number" min="0" step="100" value="${r.fuel_cost??""}" placeholder="-" oninput="markReportRowChanged(this)"></td>
@@ -1785,7 +1785,7 @@ function validateReportRows(rows){
   for(let i=0;i<rows.length;i++){
     const r=rows[i];
     if(!r.date||!r.startTime||!r.endTime||!r.driver_id||!r.purpose_id||!r.destination)return "필수값이 비어 있는 행이 있습니다.";
-    if(!Number.isFinite(r.startKm)||!Number.isFinite(r.endKm))return "키로수는 숫자로 입력해주세요.";
+    if(!Number.isFinite(r.startKm)||!Number.isFinite(r.endKm))return "키로수는 숫자로 입력해주세요.";\n    if(!Number.isInteger(r.startKm)||!Number.isInteger(r.endKm))return "키로수는 소수점 없이 1km 단위로 입력해주세요.";
     if(r.endKm<r.startKm)return "도착 키로수는 출발 키로수보다 작을 수 없습니다.";
     if(r.highpassCost!==null&&(!Number.isFinite(r.highpassCost)||r.highpassCost<0))return "하이패스 비용은 0원 이상의 숫자로 입력해주세요.";
     if(r.fuelCost!==null&&(!Number.isFinite(r.fuelCost)||r.fuelCost<0))return "주유 비용은 0원 이상의 숫자로 입력해주세요.";
