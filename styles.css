@@ -1665,3 +1665,14 @@ h1,h2,h3,p{word-break:keep-all}
 .global-facility-count{font-size:12px;color:var(--muted);padding-bottom:14px}
 #globalManagerRows tr[hidden]{display:none}
 @media(max-width:540px){.global-facility-filter{align-items:stretch;gap:8px}.global-facility-filter label{flex-basis:100%;max-width:none}.global-facility-count{padding-bottom:0}}
+
+
+/* 출발 키로수: 마지막 기록 불러오기 */
+.odometer-field-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.odometer-field-head>label:first-child{font-weight:700}
+.odometer-load-check{display:inline-flex;align-items:center;gap:7px;font-size:.88rem;font-weight:700;color:#555;cursor:pointer;white-space:nowrap}
+.odometer-load-check input{width:17px;height:17px;accent-color:#e31b23;cursor:pointer}
+@media (max-width:560px){
+  .odometer-field-head{align-items:flex-start;flex-direction:column;gap:7px}
+  .odometer-load-check{font-size:.85rem}
+}
