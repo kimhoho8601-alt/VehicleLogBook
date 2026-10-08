@@ -203,7 +203,8 @@ window.startTrip=async function(){
   const purposeId=document.getElementById("purpose").value;
   const destination=document.getElementById("destination").value.trim();
   const startOdometer=Number(document.getElementById("startKm").value);
-  if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("운행 정보를 모두 입력해주세요.");\n  if(!Number.isInteger(startOdometer))return toast("출발 키로수는 소수점 없이 1km 단위로 입력해주세요.");
+  if(!driverId||!purposeId||!destination||!Number.isFinite(startOdometer))return toast("운행 정보를 모두 입력해주세요.");
+  if(!Number.isInteger(startOdometer))return toast("출발 키로수는 소수점 없이 1km 단위로 입력해주세요.");
   const btn=document.getElementById("startTripButton");
   if(btn){btn.disabled=true;btn.textContent="운행 시작 중...";}
   try{
@@ -260,7 +261,8 @@ window.endTrip=async function(id){
   const endKmInput=document.getElementById("endKm");
   const endKmRaw=endKmInput?.value?.trim()||"";
   const endOdometer=Number(endKmRaw);
-  if(!endKmRaw||!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");\n  if(!Number.isInteger(endOdometer))return toast("도착 키로수는 소수점 없이 1km 단위로 입력해주세요.");
+  if(!endKmRaw||!Number.isFinite(endOdometer))return toast("도착 키로수를 입력해주세요.");
+  if(!Number.isInteger(endOdometer))return toast("도착 키로수는 소수점 없이 1km 단위로 입력해주세요.");
   const startOdometer=Number(endKmInput.min);
   if(endOdometer<0||(Number.isFinite(startOdometer)&&endOdometer<startOdometer))return toast("도착 키로수는 출발 키로수보다 작을 수 없습니다.");
   const highpassSelected=document.getElementById("highpassExpenseTab")?.getAttribute("aria-pressed")==="true";
