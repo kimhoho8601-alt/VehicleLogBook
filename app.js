@@ -1787,7 +1787,8 @@ function validateReportRows(rows){
   for(let i=0;i<rows.length;i++){
     const r=rows[i];
     if(!r.date||!r.startTime||!r.endTime||!r.driver_id||!r.purpose_id||!r.destination)return "필수값이 비어 있는 행이 있습니다.";
-    if(!Number.isFinite(r.startKm)||!Number.isFinite(r.endKm))return "키로수는 숫자로 입력해주세요.";\n    if(!Number.isInteger(r.startKm)||!Number.isInteger(r.endKm))return "키로수는 소수점 없이 1km 단위로 입력해주세요.";
+    if(!Number.isFinite(r.startKm)||!Number.isFinite(r.endKm))return "키로수는 숫자로 입력해주세요.";
+    if(!Number.isInteger(r.startKm)||!Number.isInteger(r.endKm))return "키로수는 소수점 없이 1km 단위로 입력해주세요.";
     if(r.endKm<r.startKm)return "도착 키로수는 출발 키로수보다 작을 수 없습니다.";
     if(r.highpassCost!==null&&(!Number.isFinite(r.highpassCost)||r.highpassCost<0))return "하이패스 비용은 0원 이상의 숫자로 입력해주세요.";
     if(r.fuelCost!==null&&(!Number.isFinite(r.fuelCost)||r.fuelCost<0))return "주유 비용은 0원 이상의 숫자로 입력해주세요.";
