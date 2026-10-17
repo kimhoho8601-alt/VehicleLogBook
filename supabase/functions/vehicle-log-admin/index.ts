@@ -203,6 +203,18 @@ Deno.serve(async(req)=>{
     }
   }
 
+  if(action==="resetVehicles"||action==="resetMembers"){
+    const kind=action==="resetVehicles"?"vehicles":"members";
+    const expected=kind==="vehicles"?"차량 초기화":"직원 초기화";
+    if(body.confirmation!==expected) return out({error:"초기화 확인 문구가 일치하지 않습니다."},400);
+    const {data,error}=await admin.rpc("reset_vehicle_log_master_data",{p_kind:kind});
+    if(error){
+      if(error.code==="23503"||error.code==="55P03") return out({error:error.code==="55P03"?"다른 작업이 진행 중입니다. 잠시 후 다시 시도해주세요.":error.message},409);
+      return out({error:"초기화하지 못했습니다. 잠시 후 다시 시도해주세요."},500);
+    }
+    return out({ok:true,deletedCount:Number(data||0)});
+  }
+
   if(action==="resetTrips"){
     try{
       const {data:deleted,error:deleteError}=await admin

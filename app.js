@@ -446,7 +446,7 @@ function adminFrame(content){
   const a=state.admin;
   const isMaster=a.profile.role==="superadmin";
   const masterNav=isMaster?`<button class="${state.adminTab==="purposes"?"active":""}" onclick="setAdminTab('purposes')">운행목적</button><button class="${state.adminTab==="accounts"?"active":""}" onclick="setAdminTab('accounts')">관리자 계정 등록</button>`:"";
-  const resetButton=isMaster?`<button class="text-btn reset-data-btn" onclick="resetAllTripData()">운행 데이터 초기화</button>`:"";
+  const resetButton=isMaster?`<button class="text-btn reset-data-btn" onclick="resetAllTripData()">운행 데이터 초기화</button><button class="text-btn reset-data-btn" onclick="resetAllMasterData('vehicles')">차량 초기화</button><button class="text-btn reset-data-btn" onclick="resetAllMasterData('members')">직원 초기화</button>`:"";
   const facilityTools=!isMaster?`<button class="text-btn share-staff-btn" onclick="openFacilityShare()">직원 공유 링크</button><button class="text-btn" onclick="openOwnPasswordChange()">비밀번호 변경</button>`:"";
   app.innerHTML=`<main class="admin-shell"><header class="admin-head"><div><p class="eyebrow">${isMaster?"SYSTEM ADMIN":"FACILITY ADMIN"}</p><h1>${esc(a.facility.name)}</h1><p>${esc(a.profile.display_name)} · ${esc(a.facility.code)}</p></div><div class="admin-head-actions">${a.facility.code!=="HQ"?`<button class="text-btn preview-btn" onclick="previewFacility('${encodeURIComponent(a.facility.code)}')">담당자 화면 미리보기</button>`:""}${facilityTools}${resetButton}<button class="text-btn" onclick="adminLogout()">로그아웃</button></div></header><nav class="admin-nav"><button class="${state.adminTab==="dashboard"?"active":""}" onclick="setAdminTab('dashboard')">운행현황</button><button class="${state.adminTab==="vehicles"?"active":""}" onclick="setAdminTab('vehicles')">차량</button><button class="${state.adminTab==="maintenance"?"active":""}" onclick="setAdminTab('maintenance')">정비 이력</button><button class="${state.adminTab==="members"?"active":""}" onclick="setAdminTab('members')">직원</button><button class="${state.adminTab==="report"?"active":""}" onclick="setAdminTab('report')">월간 운행일지</button>${masterNav}</nav><div id="adminContent">${content}</div></main>`;
 }
@@ -625,6 +625,36 @@ window.resetAllTripData=async function(){
     toast(error.message||"운행 데이터를 초기화하지 못했습니다.");
   }finally{
     buttons.forEach(b=>{b.disabled=false;b.textContent=b.dataset.label||"운행 데이터 초기화";});
+  }
+}
+let masterDataResetPending=false;
+window.resetAllMasterData=async function(kind){
+  if(state.admin?.profile?.role!=="superadmin")return toast("최고관리자만 사용할 수 있습니다.");
+  const options={
+    vehicles:{label:"차량",action:"resetVehicles",note:"연결된 운행·정비기록이 있으면 초기화할 수 없습니다. 먼저 해당 기록을 정리해주세요."},
+    members:{label:"직원",action:"resetMembers",note:"연결된 운행기록이나 차량 관리 담당자 지정이 있으면 초기화할 수 없습니다. 먼저 운행기록과 차량을 정리해주세요."}
+  };
+  const option=options[kind];
+  if(!option||masterDataResetPending)return;
+  if(!confirm(`모든 시설의 ${option.label} 정보를 초기화할까요?\n\n현재 시설 필터와 관계없이 전체 시설에 적용됩니다.\n시설코드·관리자 계정·운행목적 설정은 유지됩니다.\n${option.note}`))return;
+  const confirmation=`${option.label} 초기화`;
+  if(prompt(`삭제를 진행하려면 ${confirmation} 를 정확히 입력해주세요.\n이 작업은 되돌릴 수 없습니다.`)!==confirmation)return toast("데이터 초기화를 취소했습니다.");
+  masterDataResetPending=true;
+  const buttons=[...document.querySelectorAll('.reset-data-btn')];
+  buttons.forEach(b=>{b.disabled=true;});
+  try{
+    const result=await callAdminApi({action:option.action,confirmation});
+    state.overview=null;
+    state.reportEdit=null;
+    state.maintenanceExportData=null;
+    state.maintenanceFilterVehicle="";
+    toast(`${option.label} ${Number(result.deletedCount||0).toLocaleString()}건을 초기화했습니다.`);
+    await renderAdminHome();
+  }catch(error){
+    toast(error.message||`${option.label} 정보를 초기화하지 못했습니다.`);
+  }finally{
+    masterDataResetPending=false;
+    buttons.forEach(b=>{b.disabled=false;});
   }
 }
 async function getOverview(force=false){
