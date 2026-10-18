@@ -217,13 +217,12 @@ Deno.serve(async(req)=>{
 
   if(action==="resetTrips"){
     try{
-      const {data:deleted,error:deleteError}=await admin
+      const {count,error:deleteError}=await admin
         .from("trips")
-        .delete()
-        .not("id","is",null)
-        .select("id");
+        .delete({count:"exact"})
+        .not("id","is",null);
       if(deleteError) throw deleteError;
-      return out({ok:true,deletedCount:(deleted||[]).length});
+      return out({ok:true,deletedCount:count??0});
     }catch(error){
       return out({error:error.message||"운행 데이터 초기화 실패"},500);
     }

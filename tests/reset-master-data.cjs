@@ -39,10 +39,13 @@ const run=code=>vm.runInContext(code,ctx);
   assert.equal(elements.toast.textContent,'연결된 운행기록이 있습니다.');
   assert.equal(button.disabled,false);assert.equal(run('masterDataResetPending'),false);
 
-  let handler,role='superadmin',validUser=true,rpcCalls=0,rpcError=null;
+  let handler,role='superadmin',validUser=true,rpcCalls=0,rpcError=null,deleteCalls=0,deleteError=null;
   const edge=vm.createContext({Response,console,Deno:{env:{get:()=> 'test'},serve:fn=>handler=fn},
     createClient:()=>({auth:{getUser:async()=>({data:{user:validUser?{id:'u'}:null},error:null})},
-      from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{role},error:null})})})}),
+      from:table=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{role},error:null})})}),
+        delete:options=>{deleteCalls++;assert.equal(table,'trips');assert.equal(options.count,'exact');
+          return {not:async(column,op,value)=>{assert.equal(column,'id');assert.equal(op,'is');assert.equal(value,null);
+            return {count:2501,error:deleteError};}};}}),
       rpc:async(name,args)=>{rpcCalls++;assert.equal(name,'reset_vehicle_log_master_data');assert(['vehicles','members'].includes(args.p_kind));return {data:3,error:rpcError};}})});
   vm.runInContext(fs.readFileSync(path.join(root,'supabase/functions/vehicle-log-admin/index.ts'),'utf8')
     .replace(/^import .*;\n/,'').replace('authChanges:any','authChanges'),edge);
@@ -57,5 +60,17 @@ const run=code=>vm.runInContext(code,ctx);
   }
   rpcError={code:'23503',message:'연결된 기록이 있습니다.'};
   assert.equal((await handler(request({action:'resetVehicles',confirmation:'차량 초기화'}))).status,409);
+  rpcError={code:'55P03'};
+  const busy=await handler(request({action:'resetMembers',confirmation:'직원 초기화'}));
+  assert.equal(busy.status,409);assert((await busy.json()).error.includes('다른 작업'));
+  rpcError={code:'PGRST202',message:'missing function'};
+  assert.equal((await handler(request({action:'resetMembers',confirmation:'직원 초기화'}))).status,500);
+  validUser=false;assert.equal((await handler(request({action:'resetTrips'}))).status,401);
+  validUser=true;role='admin';assert.equal((await handler(request({action:'resetTrips'}))).status,403);
+  assert.equal(deleteCalls,0);role='superadmin';
+  const trips=await handler(request({action:'resetTrips'}));
+  assert.equal(trips.status,200);assert.equal((await trips.json()).deletedCount,2501);
+  deleteError={message:'delete failed'};
+  assert.equal((await handler(request({action:'resetTrips'}))).status,500);
   console.log('PASS: reset visibility, role checks, cancel/confirmation, independent actions, refresh, error recovery and server authorization');
 })().catch(e=>{console.error(e);process.exitCode=1});
