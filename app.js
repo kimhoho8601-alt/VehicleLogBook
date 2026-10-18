@@ -1556,6 +1556,7 @@ function reportRowHtml(r,i,data){
   const dateValue=r.start_at?seoulDateInput(r.start_at):(r.date||"");
   const startValue=r.start_at?seoulTimeInput(r.start_at):(r.startTime||"");
   const endValue=r.end_at?seoulTimeInput(r.end_at):(r.endTime||"");
+  const endDateValue=r.end_at?seoulDateInput(r.end_at):(r.endDate||dateValue);
   const sortOrder=Number(r.admin_sort_order)||i+1;
   return `<tr class="edit-trip-row${isNew?" changed new-row":""}" draggable="true" data-trip-id="${r.id}" data-new="${isNew?"1":"0"}" data-index="${i}" data-sort-order="${sortOrder}" ondragstart="reportDragStart(event)" ondragover="reportDragOver(event)" ondrop="reportDrop(event)" ondragend="reportDragEnd(event)">
     <td class="row-drag-cell"><span class="drag-handle" title="드래그해서 순서 이동" aria-label="드래그해서 순서 이동">⋮⋮</span></td>
@@ -1566,6 +1567,7 @@ function reportRowHtml(r,i,data){
     <td><select class="cell-select edit-purpose" onchange="markReportRowChanged(this)"><option value="">선택</option>${purposeOptions(data.purposes,r.purpose_id)}</select></td>
     <td><input class="cell-input edit-destination" value="${esc(r.destination||"")}" onchange="markReportRowChanged(this)"></td>
     <td><input class="cell-input edit-start-time" type="time" value="${startValue}" onchange="markReportRowChanged(this)"></td>
+    <td><input class="cell-input edit-end-date" type="date" value="${endDateValue}" onchange="markReportRowChanged(this)"></td>
     <td><input class="cell-input edit-end-time" type="time" value="${endValue}" onchange="markReportRowChanged(this)"></td>
     <td><input class="cell-input number-input edit-start-km" type="number" step="1" inputmode="numeric" value="${r.start_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
     <td><input class="cell-input number-input edit-end-km" type="number" step="1" inputmode="numeric" value="${r.end_odometer??""}" oninput="markReportRowChanged(this);updateReportDistance(this)"></td>
@@ -1588,7 +1590,7 @@ function reportEditorMarkup(data,{saved=false}={}){
       </div>
       <span id="selectionCountLabel">선택된 행 없음</span>
     </div>
-    <div class="table-scroll report-edit-scroll"><table class="admin-table report-edit-table"><thead><tr><th class="row-drag-head"></th><th class="row-select-head"><input id="selectAllReportRows" type="checkbox" aria-label="전체 선택" onchange="toggleAllReportRows(this)"></th><th>날짜</th><th>운전자</th><th>동행자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착</th><th>출발km</th><th>도착km</th><th>운행거리</th><th>하이패스</th><th>주유</th><th>비고</th></tr></thead><tbody id="reportEditBody">${rows||'<tr class="report-empty-row"><td colspan="15">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>'}</tbody></table></div>
+    <div class="table-scroll report-edit-scroll"><table class="admin-table report-edit-table"><thead><tr><th class="row-drag-head"></th><th class="row-select-head"><input id="selectAllReportRows" type="checkbox" aria-label="전체 선택" onchange="toggleAllReportRows(this)"></th><th>출발일</th><th>운전자</th><th>동행자</th><th>용무</th><th>행선지</th><th>출발</th><th>도착일</th><th>도착</th><th>출발km</th><th>도착km</th><th>운행거리</th><th>하이패스</th><th>주유</th><th>비고</th></tr></thead><tbody id="reportEditBody">${rows||'<tr class="report-empty-row"><td colspan="16">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>'}</tbody></table></div>
     <div class="editor-bottom"><div class="editor-bottom-status"><span id="editCountLabel">변경된 기록 없음</span><span class="editor-bottom-divider">·</span><span id="bottomSelectionCount">선택된 행 없음</span></div><div class="editor-bottom-actions"><button type="button" class="btn light" onclick="addReportRow()">＋ 행 추가</button><button class="btn primary" onclick="saveReportEdits()">변경사항 저장</button></div></div>
   </section>`;
 }
@@ -1658,10 +1660,36 @@ window.toggleAllReportRows=function(master){
   updateReportEditStatus();
 }
 
+let reportMutationPending=false;
+
+function newReportTripId(){
+  if(window.crypto?.randomUUID)return window.crypto.randomUUID();
+  const bytes=new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  bytes[6]=(bytes[6]&15)|64;
+  bytes[8]=(bytes[8]&63)|128;
+  const hex=[...bytes].map(value=>value.toString(16).padStart(2,"0")).join("");
+  return hex.slice(0,8)+"-"+hex.slice(8,12)+"-"+hex.slice(12,16)+"-"+hex.slice(16,20)+"-"+hex.slice(20);
+}
+
+function lockReportEditor(){
+  const controls=[...document.querySelectorAll(".admin-shell button,.report-editor-card input,.report-editor-card select")];
+  const previous=controls.map(control=>[control,control.disabled]);
+  controls.forEach(control=>control.disabled=true);
+  return ()=>previous.forEach(([control,disabled])=>control.disabled=disabled);
+}
+
+function updateReportEmptyRow(){
+  const body=document.getElementById("reportEditBody");
+  if(body&&!body.querySelector(".edit-trip-row"))body.innerHTML='<tr class="report-empty-row"><td colspan="16">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>';
+  markReportOrderChanged();
+}
+
 let draggedReportRow=null;
 let draggedReportOriginIndex=-1;
 let draggedReportFinalized=false;
 window.reportDragStart=function(event){
+  if(reportMutationPending){event.preventDefault();return}
   const row=event.currentTarget;
   if(event.target?.closest("input,select,button,details,summary,label")){
     event.preventDefault();
@@ -1723,7 +1751,7 @@ window.updateReportDistance=function(el){
 }
 
 window.addReportRow=function(){
-  if(!state.reportEdit)return;
+  if(reportMutationPending||!state.reportEdit)return;
   const body=document.getElementById("reportEditBody");
   if(!body)return;
   body.querySelector(".report-empty-row")?.remove();
@@ -1734,8 +1762,9 @@ window.addReportRow=function(){
   const date=last?.querySelector(".edit-date")?.value||fallbackDate;
   const previousEnd=last?.querySelector(".edit-end-km")?.value||"";
   const temp={
-    id:"new-"+Date.now()+"-"+Math.random().toString(36).slice(2,7),
+    id:"new-"+newReportTripId(),
     date,
+    endDate:date,
     startTime:"",
     endTime:"",
     driver_id:"",
@@ -1753,6 +1782,7 @@ window.addReportRow=function(){
   const wrapper=document.createElement("tbody");
   wrapper.innerHTML=reportRowHtml(temp,existing.length,state.reportEdit);
   const row=wrapper.firstElementChild;
+  row.dataset.clientTripId=temp.id.slice(4);
   body.appendChild(row);
   row.scrollIntoView({behavior:"smooth",block:"nearest"});
   row.querySelector(".edit-driver")?.focus();
@@ -1760,27 +1790,33 @@ window.addReportRow=function(){
 }
 
 window.deleteSelectedReportRows=async function(){
+  if(reportMutationPending)return;
   const rows=[...document.querySelectorAll(".edit-trip-row")].filter(row=>row.querySelector(".row-select-check")?.checked);
   if(!rows.length)return toast("삭제할 행을 선택해주세요.");
-  const existingRows=rows.filter(row=>row.dataset.new!=="1");
-  const message=existingRows.length
-    ? "선택한 "+rows.length+"건을 삭제할까요? 저장된 운행기록 "+existingRows.length+"건은 즉시 삭제됩니다."
+  const storedRows=rows.filter(row=>row.dataset.new!=="1"||row.dataset.saveAttempted==="1");
+  const message=storedRows.length
+    ? "선택한 "+rows.length+"건을 삭제할까요? 저장되었거나 저장을 시도한 운행기록 "+storedRows.length+"건은 서버에서도 삭제됩니다. 다른 행의 미저장 변경사항은 유지됩니다."
     : "선택한 "+rows.length+"개의 새 행을 삭제할까요?";
   if(!confirm(message))return;
+  reportMutationPending=true;
+  const unlock=lockReportEditor();
   try{
-    for(const row of existingRows){
-      await restRequest("trips?id="+eq(row.dataset.tripId),{method:"DELETE"});
+    for(const row of storedRows){
+      const id=row.dataset.new==="1"?row.dataset.clientTripId:row.dataset.tripId;
+      await restRequest("trips?id="+eq(id),{method:"DELETE"});
+      row.remove();
+      state.reportEdit.trips=state.reportEdit.trips.filter(trip=>trip.id!==id);
+      if(state.reportEdit.original)delete state.reportEdit.original[id];
     }
-    rows.forEach(row=>row.remove());
-    toast(existingRows.length?"선택한 운행기록을 삭제했습니다.":"추가한 행을 삭제했습니다.");
-    if(existingRows.length){
-      await openReportEditorFromState();
-    }else{
-      markReportOrderChanged();
-      const body=document.getElementById("reportEditBody");
-      if(body&&!body.querySelector(".edit-trip-row"))body.innerHTML='<tr class="report-empty-row"><td colspan="15">수정할 운행기록이 없습니다. ‘행 추가’를 눌러 새 기록을 입력할 수 있습니다.</td></tr>';
-    }
-  }catch(error){toast(error.message||"선택한 기록을 삭제하지 못했습니다.")}
+    rows.filter(row=>!storedRows.includes(row)).forEach(row=>row.remove());
+    toast(storedRows.length?"선택한 운행기록을 삭제했습니다.":"추가한 행을 삭제했습니다.");
+  }catch(error){
+    toast(error.message||"선택한 기록을 삭제하지 못했습니다.");
+  }finally{
+    reportMutationPending=false;
+    unlock();
+    updateReportEmptyRow();
+  }
 }
 
 function collectReportRows(){
@@ -1789,6 +1825,13 @@ function collectReportRows(){
     const date=row.querySelector(".edit-date").value;
     const startTime=row.querySelector(".edit-start-time").value;
     const endTime=row.querySelector(".edit-end-time").value;
+    const endDate=row.querySelector(".edit-end-date").value;
+    const original=state.reportEdit?.trips?.find(trip=>trip.id===row.dataset.tripId);
+    const timestamp=(day,time,value)=>{
+      if(!day||!time)return null;
+      return value&&day===seoulDateInput(value)&&time===seoulTimeInput(value)?value:toIsoKst(day,time);
+    };
+    if(row.dataset.new==="1"&&!row.dataset.clientTripId)row.dataset.clientTripId=newReportTripId();
     const startRaw=row.querySelector(".edit-start-km").value;
     const endRaw=row.querySelector(".edit-end-km").value;
     const startKm=startRaw===""?NaN:Number(startRaw);
@@ -1800,23 +1843,26 @@ function collectReportRows(){
     return {
       id:row.dataset.tripId,
       isNew:row.dataset.new==="1",
+      clientTripId:row.dataset.clientTripId||null,
       changed:row.classList.contains("changed"),
       sortOrder:index+1,
-      date,startTime,endTime,startKm,endKm,highpassCost,fuelCost,
+      date,endDate,startTime,endTime,startKm,endKm,highpassCost,fuelCost,
       driver_id:row.querySelector(".edit-driver").value,
       passenger_ids:selectedPassengers,
       purpose_id:row.querySelector(".edit-purpose").value,
       destination:row.querySelector(".edit-destination").value.trim(),
       note:row.querySelector(".edit-note").value.trim(),
-      start_at:date&&startTime?toIsoKst(date,startTime):null,
-      end_at:date&&endTime?toIsoKst(date,endTime):null
+      start_at:timestamp(date,startTime,original?.start_at),
+      end_at:timestamp(endDate,endTime,original?.end_at)
     };
   });
 }
 function validateReportRows(rows){
   for(let i=0;i<rows.length;i++){
     const r=rows[i];
-    if(!r.date||!r.startTime||!r.endTime||!r.driver_id||!r.purpose_id||!r.destination)return "필수값이 비어 있는 행이 있습니다.";
+    if(!r.date||!r.endDate||!r.startTime||!r.endTime||!r.driver_id||!r.purpose_id||!r.destination)return "필수값이 비어 있는 행이 있습니다.";
+    if(!r.start_at||!r.end_at||!Number.isFinite(Date.parse(r.start_at))||!Number.isFinite(Date.parse(r.end_at)))return "출발일과 도착일, 시간을 확인해주세요.";
+    if(r.startKm<0||r.endKm<0)return "키로수는 0 이상의 숫자로 입력해주세요.";
     if(!Number.isFinite(r.startKm)||!Number.isFinite(r.endKm))return "키로수는 숫자로 입력해주세요.";
     if(!Number.isInteger(r.startKm)||!Number.isInteger(r.endKm))return "키로수는 소수점 없이 1km 단위로 입력해주세요.";
     if(r.endKm<r.startKm)return "도착 키로수는 출발 키로수보다 작을 수 없습니다.";
@@ -1832,17 +1878,22 @@ function validateReportRows(rows){
   return "";
 }
 window.saveReportEdits=async function(){
+  if(reportMutationPending)return;
   const rows=collectReportRows();
   const changed=rows.filter(r=>r.changed||r.isNew);
   if(!changed.length)return toast("변경된 기록이 없습니다.");
   const error=validateReportRows(rows);
   if(error)return toast(error);
+  reportMutationPending=true;
+  const unlock=lockReportEditor();
   const buttons=[...document.querySelectorAll('[onclick="saveReportEdits()"]')];
-  buttons.forEach(button=>{button.disabled=true;button.dataset.label=button.textContent;button.textContent="저장 중...";});
+  buttons.forEach(button=>{button.dataset.label=button.textContent;button.textContent="저장 중...";});
   try{
     const orderWasChanged=Boolean(document.querySelector(".edit-trip-row.reordered"));
     const targets=orderWasChanged?rows:changed;
+    if(orderWasChanged)document.querySelectorAll(".edit-trip-row").forEach(row=>row.classList.add("changed"));
     for(const r of targets){
+      const row=[...document.querySelectorAll(".edit-trip-row")].find(element=>element.dataset.tripId===r.id);
       const payload={
         driver_id:r.driver_id,
         passenger_ids:r.passenger_ids,
@@ -1861,21 +1912,42 @@ window.saveReportEdits=async function(){
         admin_edited_by:state.admin.profile.id,
         admin_sort_order:r.sortOrder
       };
+      const id=r.isNew?r.clientTripId:r.id;
+      let result;
       if(r.isNew){
+        payload.id=id;
         payload.facility_id=state.reportEdit.facility.id;
         payload.vehicle_id=state.reportEdit.vehicle.id;
-        await restRequest("trips",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(payload)});
+        if(row)row.dataset.saveAttempted="1";
+        result=await restRequest("trips?on_conflict=id",{method:"POST",headers:{"Prefer":"resolution=merge-duplicates,return=representation"},body:JSON.stringify(payload)});
       }else{
-        await restRequest("trips?id="+eq(r.id),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify(payload)});
+        result=await restRequest("trips?id="+eq(id),{method:"PATCH",headers:{"Prefer":"return=representation"},body:JSON.stringify(payload)});
+      }
+      if(!Array.isArray(result)||!result.some(trip=>trip.id===id))throw new Error("저장 결과를 확인하지 못했습니다. 다시 저장해도 같은 기록은 중복 추가되지 않습니다.");
+      const saved=result.find(trip=>trip.id===id);
+      const index=state.reportEdit.trips.findIndex(trip=>trip.id===id);
+      if(index<0)state.reportEdit.trips.push(saved);
+      else state.reportEdit.trips[index]=saved;
+      if(state.reportEdit.original)state.reportEdit.original[id]=JSON.stringify(saved);
+      if(row){
+        row.dataset.tripId=id;
+        row.dataset.new="0";
+        delete row.dataset.saveAttempted;
+        row.classList.remove("changed","new-row","reordered");
       }
     }
     toast("변경사항을 저장했습니다.");
     await openReportEditorFromState();
   }catch(error){
     toast(error.message||"변경사항을 저장하지 못했습니다.");
-    buttons.forEach(button=>{button.disabled=false;button.textContent=button.dataset.label||"변경사항 저장";});
+  }finally{
+    reportMutationPending=false;
+    unlock();
+    buttons.forEach(button=>{button.textContent=button.dataset.label||"변경사항 저장";});
+    updateReportEditStatus();
   }
 }
+
 async function openReportEditorFromState(){
   const month=state.reportEdit?.month,vehicleId=state.reportEdit?.vehicleId;
   if(!month||!vehicleId)return renderReport();
