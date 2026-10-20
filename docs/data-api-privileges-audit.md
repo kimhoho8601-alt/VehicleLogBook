@@ -16,6 +16,8 @@ Inspected the full default-branch trees of all 14 accessible repositories, then 
 | fomhr, Work-Style, savethemove, photo, sign, Convert | No Supabase reference or CREATE TABLE found in inspected app text | No SQL change required. |
 | Scale | Empty repository | Nothing to migrate. |
 
+The deployed interview admin account functions were also inspected read only. Their service-role linkage checks require SELECT on profiles/employees/goals/interviews/audit_logs/app_settings; no new table write grant is required.
+
 The accessible Supabase projects include VehicleLogBook and performance-management (active), plus teamleader and an older performance project (inactive). Inactive projects were not resumed or modified. No account credentials or user records were read.
 
 ## VehicleLogBook: preserved behavior
