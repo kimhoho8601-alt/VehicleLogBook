@@ -11,6 +11,15 @@ const out=(body,status=200)=>new Response(JSON.stringify(body),{
   headers:{...cors,"Content-Type":"application/json; charset=utf-8"}
 });
 
+function reportMonthRange(month){
+  if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))throw new Error("조회 월을 확인해주세요.");
+  // Advance from the first day in UTC, then apply KST's fixed +09:00 offset.
+  // Never advance the UTC representation of KST midnight (the previous day).
+  const nextMonth=new Date(month+"-01T00:00:00Z");
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth()+1);
+  return {start:month+"-01T00:00:00+09:00",end:new Date(nextMonth.getTime()-9*60*60*1000).toISOString()};
+}
+
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS") return new Response(null,{status:204,headers:cors});
   if(req.method!=="POST") return out({error:"Method not allowed"},405);
@@ -232,7 +241,7 @@ Deno.serve(async(req)=>{
     try{
       const vehicleId=String(body.vehicleId||"");
       const month=String(body.month||"");
-      if(!vehicleId||!/^[0-9]{4}-[0-9]{2}$/.test(month)) return out({error:"차량과 조회 월을 확인해주세요."},400);
+      if(!vehicleId||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)) return out({error:"차량과 조회 월을 확인해주세요."},400);
 
       const {facilities,facilityIds}=await getManagedFacilities();
       const {data:vehicle,error:vehicleError}=await admin
@@ -241,14 +250,12 @@ Deno.serve(async(req)=>{
       if(!vehicle||!facilityIds.includes(vehicle.facility_id)) return out({error:"조회 권한이 없는 차량입니다."},403);
 
       const facility=facilities.find(f=>f.id===vehicle.facility_id);
-      const nextMonth=new Date(month+"-01T00:00:00+09:00");
-      nextMonth.setMonth(nextMonth.getMonth()+1);
-      const start=month+"-01T00:00:00+09:00";
+      const {start,end}=reportMonthRange(month);
 
       const [membersRes,purposesRes,tripsRes]=await Promise.all([
         admin.from("facility_members").select("id,name").eq("facility_id",vehicle.facility_id),
         admin.from("trip_purposes").select("id,name").is("facility_id",null),
-        admin.from("trips").select("*").eq("facility_id",vehicle.facility_id).eq("vehicle_id",vehicleId).eq("status","ended").gte("start_at",start).lt("start_at",nextMonth.toISOString()).order("admin_sort_order",{ascending:true,nullsFirst:false}).order("start_at",{ascending:true})
+        admin.from("trips").select("*").eq("facility_id",vehicle.facility_id).eq("vehicle_id",vehicleId).eq("status","ended").gte("start_at",start).lt("start_at",end).order("admin_sort_order",{ascending:true,nullsFirst:false}).order("start_at",{ascending:true})
       ]);
       if(membersRes.error) throw membersRes.error;
       if(purposesRes.error) throw purposesRes.error;
@@ -299,3 +306,4 @@ Deno.serve(async(req)=>{
 
   return out({error:"Unknown action"},400);
 });
+

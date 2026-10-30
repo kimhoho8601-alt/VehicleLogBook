@@ -1510,10 +1510,8 @@ async function loadReportEditData(month,vehicleId){
       trips:result.trips||[]
     };
   }
-  const start=month+"-01T00:00:00+09:00";
-  const endDate=new Date(month+"-01T00:00:00+09:00");
-  endDate.setMonth(endDate.getMonth()+1);
-  const trips=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=admin_sort_order.asc.nullslast,start_at.asc");
+  const {start,end}=reportMonthRange(month);
+  const trips=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(end)+"&order=admin_sort_order.asc.nullslast,start_at.asc");
   return {
     month,
     vehicleId,
@@ -1523,6 +1521,14 @@ async function loadReportEditData(month,vehicleId){
     purposes:state.admin.purposes||[],
     trips:trips||[]
   };
+}
+function reportMonthRange(month){
+  if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))throw new Error("조회 월을 확인해주세요.");
+  // Advance from the first day in UTC, then apply KST's fixed +09:00 offset.
+  // Never advance the UTC representation of KST midnight (the previous day).
+  const nextMonth=new Date(month+"-01T00:00:00Z");
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth()+1);
+  return {start:month+"-01T00:00:00+09:00",end:new Date(nextMonth.getTime()-9*60*60*1000).toISOString()};
 }
 function seoulDateInput(v){
   const p=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(v));
@@ -2091,9 +2097,8 @@ window.downloadReportWithOptions=async function(){
       vehicle=result.vehicle;
       facilityName=result.facility?.name||"";
     }else{
-      const start=month+"-01T00:00:00+09:00";
-      const endDate=new Date(month+"-01T00:00:00+09:00");endDate.setMonth(endDate.getMonth()+1);
-      rows=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(endDate.toISOString())+"&order=admin_sort_order.asc.nullslast,start_at.asc");
+      const {start,end}=reportMonthRange(month);
+      rows=await restRequest("trips?select=*&facility_id="+eq(state.admin.facility.id)+"&vehicle_id="+eq(vehicleId)+"&status=eq.ended&start_at=gte."+encodeURIComponent(start)+"&start_at=lt."+encodeURIComponent(end)+"&order=admin_sort_order.asc.nullslast,start_at.asc");
       members=Object.fromEntries(state.admin.members.map(x=>[x.id,x.name]));
       purposes=Object.fromEntries(state.admin.purposes.map(x=>[x.id,x.name]));
       vehicle=state.admin.vehicles.find(x=>x.id===vehicleId);
@@ -2131,3 +2136,4 @@ window.downloadReportWithOptions=async function(){
     app.innerHTML='<main class="login-wrap"><section class="login-card"><div class="login-brand">차량 운행일지 관리</div><h1>화면을 불러오지 못했습니다.</h1><p>잠시 후 다시 시도해주세요.</p><button class="btn light" onclick="location.reload()">새로고침</button></section></main>';
   }
 })();
+
